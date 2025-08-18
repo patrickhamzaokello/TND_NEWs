@@ -1,0 +1,169 @@
+name: tndnews_backend_project
+
+networks:
+  tnd_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+  static_files:
+    driver: local
+  media_files:
+    driver: local
+  redis_data:
+    driver: local
+
+services:
+  postgres_db:
+    image: postgres:16-bookworm
+    container_name: tnd_postgres_container
+    restart: unless-stopped
+    networks:
+      - tnd_network
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-tnd}
+      POSTGRES_USER: ${POSTGRES_USER:-tnd_user}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      PGDATA: /var/lib/postgresql/data/pgdata
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init-scripts:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-tnd_user} -d ${POSTGRES_DB:-tnd}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+    ports:
+     - '5432:5432'
+
+  tnd_backend_app:
+    image: tnd_backend_image
+    container_name: tnd_backend_container
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: /django.sh
+    depends_on:
+      postgres_db:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - tnd_network
+    ports:
+      - "${APP_PORT:-6000}:6000"
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+      - ./logs:/app/logs
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=postgresql://${POSTGRES_USER:-tnd_user}:${POSTGRES_PASSWORD}@postgres_db:5432/${POSTGRES_DB:-tnd}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "manage.py", "check", "--database", "default"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    deploy:
+      resources:
+        limits:
+          memory: 1G
+          cpus: '1.0'
+        reservations:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  redis:
+    image: redis:alpine
+    container_name: tnd_redis_container
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - tnd_network
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    deploy:
+      resources:
+        limits:
+          memory: 256M
+          cpus: '0.25'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+  celery:
+    image: tnd_backend_image
+    container_name: tnd_celery_container
+    command: celery -A tnd_project worker -E -l info
+    restart: unless-stopped
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+      - ./logs:/app/logs  # If you need log access
+    depends_on:
+      - postgres_db
+      - redis
+      - tnd_backend_app
+    networks:
+      - tnd_network
+
+  flower:
+    image: tnd_backend_image
+    container_name: tnd_flower_container
+    restart: unless-stopped
+    command: celery -A tnd_project flower --basic_auth=admin:password123
+    ports:
+      - "5555:5555"
+    depends_on:
+      redis:
+        condition: service_healthy
+    networks:
+      - tnd_network
+
+  beat:
+    image: tnd_backend_image
+    container_name: tnd_beat_container
+    restart: unless-stopped
+    command: celery -A tnd_project beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    volumes:
+      - static_files:/app/staticfiles
+      - media_files:/app/media
+      - ./logs:/app/logs  # If you need log access
+    networks:
+      - tnd_network
+    depends_on:
+      redis:
+        condition: service_healthy
+      tnd_backend_app:
+        condition: service_healthy
