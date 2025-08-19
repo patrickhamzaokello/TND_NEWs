@@ -106,9 +106,9 @@ class ArticleAdmin(admin.ModelAdmin):
 @admin.register(ScrapingRun)
 class ScrapingRunAdmin(admin.ModelAdmin):
     list_display = [
-        'run_id_short', 'source', 'status', 'articles_found',
+        'run_id', 'source', 'status', 'articles_found',
         'articles_added', 'articles_updated', 'duration_seconds',
-        'started_at', 'view_logs'
+        'started_at'
     ]
     list_filter = ['source', 'status', 'scheduled_run', 'started_at']
     search_fields = ['run_id', 'error_message']

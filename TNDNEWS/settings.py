@@ -3,8 +3,7 @@ import os
 from pathlib import Path
 import environ
 import os
-from decouple import config, Csv
-
+from decouple import config
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
@@ -40,7 +39,7 @@ CSRF_TRUSTED_ORIGINS = ["https://newsapi.mwonya.com"]
 AUTH_USER_MODEL = 'authentication.User'
 # Application definition
 
-INSTALLED_APPS = [
+DJANGO_APPS = [
     'django.contrib.admin',
     'django.contrib.auth',
     'django.contrib.contenttypes',
@@ -124,11 +123,6 @@ DATABASES = {
         'PASSWORD': config('POSTGRES_PASSWORD'),
         'HOST': config('PG_HOST'),
         'PORT': config('PG_PORT', default='5432'),
-
-        'OPTIONS': {
-            'init_command': "SET sql_mode='STRICT_TRANS_TABLES'",
-            'charset': 'utf8mb4',
-        },
     }
 }
 

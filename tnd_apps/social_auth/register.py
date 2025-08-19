@@ -1,5 +1,5 @@
 from django.contrib.auth import authenticate
-from apps.authentication.models import User
+from tnd_apps.authentication.models import User
 import random
 from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
