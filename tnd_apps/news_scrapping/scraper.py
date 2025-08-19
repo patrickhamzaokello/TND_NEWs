@@ -2,7 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from urllib.parse import urljoin
 from django.utils.text import slugify
 from .models import Article, Category, Tag, Author, NewsSource, ScrapingRun, ScrapingLog
