@@ -18,7 +18,7 @@ IOS_GOOGLE_CLIENT_ID = config('IOS_GOOGLE_CLIENT_ID')
 ANDROID_GOOGLE_CLIENT_ID = config('ANDROID_GOOGLE_CLIENT_ID')
 
 ALLOWED_HOSTS = [
-    'backend.aeacbio.com',
+    'newsapi.mwonya.com',
     'localhost',
     '127.0.0.1'
 ]

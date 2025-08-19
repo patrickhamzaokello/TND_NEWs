@@ -12,7 +12,7 @@ python manage.py migrate --noinput || {
 }
 
 echo "🚀 Starting Gunicorn server"
-exec gunicorn aeacbio_project.wsgi:application \
+exec gunicorn TNDNEWS.wsgi:application \
   --bind 0.0.0.0:6000 \
   --workers 3 \
   --access-logfile - \
