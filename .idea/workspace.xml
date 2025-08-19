@@ -4,11 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/TNDNEWS/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/TNDNEWS/settings.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/django.sh" beforeDir="false" afterPath="$PROJECT_DIR$/django.sh" afterDir="false" />
-    </list>
+    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -96,7 +92,7 @@
       <option name="number" value="Default" />
       <option name="presentableId" value="Default" />
       <updated>1755607786087</updated>
-      <workItem from="1755607787770" duration="1591000" />
+      <workItem from="1755607787770" duration="1914000" />
     </task>
     <servers />
   </component>
