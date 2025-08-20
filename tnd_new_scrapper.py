@@ -17,7 +17,7 @@ import os
 class TNDNewsScraper:
     def __init__(self):
         self.base_url = "https://tndnewsuganda.com"
-        self.news_url = "https://tndnewsuganda.com/news/"
+        self.news_url = "https://tndnewsuganda.com"
         self.headers = {
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
             'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
@@ -552,7 +552,7 @@ def quick_demo():
     Quick demonstration of the scraper
     """
     print("TND News Uganda Scraper Demo")
-    print("Website: https://tndnewsuganda.com/news/")
+    print("Website: https://tndnewsuganda.com/")
     print("=" * 60)
 
     # Quick scrape
@@ -572,7 +572,7 @@ def full_demo(max_articles=5):
     Full demonstration with article content using the actual TND News structure
     """
     print("TND News Uganda Full Content Scraper Demo")
-    print("Website: https://tndnewsuganda.com/news/")
+    print("Website: https://tndnewsuganda.com/")
     print("=" * 60)
 
     # Full scrape
@@ -667,7 +667,7 @@ def export_filtered_data(data, keyword, output_prefix='filtered'):
 # Main execution
 print("TND News Uganda Custom Scraper Ready!")
 print("=" * 50)
-print("Website: https://tndnewsuganda.com/news/")
+print("Website: https://tndnewsuganda.com/")
 print("Designed for TND News Uganda's specific HTML structure")
 print("=" * 50)
 print("Available functions:")

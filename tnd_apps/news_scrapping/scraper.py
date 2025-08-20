@@ -18,7 +18,7 @@ class TNDNewsDjangoScraper:
             self.source = NewsSource.objects.create(
                 name=source_name,
                 base_url="https://tndnewsuganda.com",
-                news_url="https://tndnewsuganda.com/news/"
+                news_url="https://tndnewsuganda.com"
             )
 
         self.headers = {
