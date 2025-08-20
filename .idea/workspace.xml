@@ -5,13 +5,21 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/dokolo_scraper.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/tasks.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
     <option name="LAST_RESOLUTION" value="IGNORE" />
+  </component>
+  <component name="FileTemplateManagerImpl">
+    <option name="RECENT_TEMPLATES">
+      <list>
+        <option value="Python Script" />
+      </list>
+    </option>
   </component>
   <component name="Git.Settings">
     <option name="RECENT_GIT_ROOT_PATH" value="$PROJECT_DIR$" />
@@ -96,7 +104,7 @@
       <option name="presentableId" value="Default" />
       <updated>1755607786087</updated>
       <workItem from="1755607787770" duration="5812000" />
-      <workItem from="1755631888151" duration="145000" />
+      <workItem from="1755631888151" duration="5609000" />
     </task>
     <servers />
   </component>

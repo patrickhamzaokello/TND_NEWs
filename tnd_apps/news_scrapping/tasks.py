@@ -2,6 +2,7 @@ from celery import shared_task
 from celery.utils.log import get_task_logger
 from django.conf import settings
 from .scraper import TNDNewsDjangoScraper
+from .dokolo_scraper import DokoloPostDjangoScraper
 from .models import ScrapingRun, ScrapingLog
 import traceback
 
@@ -56,6 +57,57 @@ def scrape_tnd_news(self, get_full_content=True, max_articles=None, source_name=
             raise self.retry(countdown=self.default_retry_delay, exc=exc)
 
         raise exc
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def scrape_dokolo_post(self, get_full_content=True, max_articles=None, source_name="Dokolo Post"):
+    """
+    Celery task to scrape Dokolo Post articles
+    """
+    try:
+        logger.info(f"Starting Dokolo Post scraping task - Task ID: {self.request.id}")
+
+        scraper = DokoloPostDjangoScraper(source_name=source_name)
+
+        # Update the scraping run with task ID
+        latest_run = ScrapingRun.objects.filter(
+            source=scraper.source,
+            status='started'
+        ).order_by('-started_at').first()
+
+        if latest_run:
+            latest_run.task_id = self.request.id
+            latest_run.save()
+
+        result = scraper.scrape_and_save(
+            get_full_content=get_full_content,
+            max_articles=max_articles
+        )
+
+        logger.info(f"Dokolo Post scraping completed successfully: {result}")
+        return result
+
+    except Exception as exc:
+        logger.error(f"Dokolo Post scraping failed: {str(exc)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+        # Update run status if exists
+        latest_run = ScrapingRun.objects.filter(
+            task_id=self.request.id
+        ).first()
+
+        if latest_run:
+            latest_run.status = 'failed'
+            latest_run.error_message = str(exc)
+            latest_run.save()
+
+        # Retry logic
+        if self.request.retries < self.max_retries:
+            logger.info(f"Retrying task in {self.default_retry_delay} seconds...")
+            raise self.retry(countdown=self.default_retry_delay, exc=exc)
+
+        raise exc
+
 
 
 @shared_task
