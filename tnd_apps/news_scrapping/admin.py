@@ -61,7 +61,7 @@ class ScrapingLogInline(admin.TabularInline):
 class ArticleAdmin(admin.ModelAdmin):
     list_display = [
         'external_id','title_short', 'category', 'author', 'word_count',
-        'has_full_content', 'scraped_at', 'view_article'
+        'has_full_content', 'scraped_at', 'view_article', 'source'
     ]
     list_filter = [
         'source', 'category', 'has_full_content', 'scraped_at', 'tags'

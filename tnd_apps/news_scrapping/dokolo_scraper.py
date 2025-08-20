@@ -107,7 +107,7 @@ class DokoloPostDjangoScraper:
                 data['category'] = category_link.get_text(strip=True) if category_link else ''
 
             # Extract date and author from entry-meta
-            entry_meta = article_div.find('div', class_='entry-meta')
+            entry_meta = article_div.select_one("div.entry-meta:not(.category-meta)")
             if entry_meta:
                 # Extract date
                 date_element = entry_meta.find('div', class_='date')
