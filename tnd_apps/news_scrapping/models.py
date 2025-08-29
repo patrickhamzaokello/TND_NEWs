@@ -126,6 +126,9 @@ class Article(models.Model):
                 self.published_at = parser.parse(self.published_time_str, fuzzy=True)
             except:
                 pass # fallback to scraped_at
+        if not self.published_at:
+            self.published_at = self.scraped_at
+            
         super().save(*args, **kwargs)
 
     def clean(self):
