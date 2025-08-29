@@ -3,15 +3,20 @@ from django.utils.html import format_html
 from django.urls import reverse
 from .models import (
     NewsSource, Category, Tag, Author, Article,
-    ScrapingRun, ScrapingLog
+    ScrapingRun, ScrapingLog, UserProfile, ArticleView
 )
 
 
 @admin.register(NewsSource)
 class NewsSourceAdmin(admin.ModelAdmin):
-    list_display = ['name', 'base_url', 'is_active', 'created_at']
+    list_display = ['name', 'base_url', 'is_active', 'created_at', 'follower_count']
     list_filter = ['is_active', 'created_at']
     search_fields = ['name', 'base_url']
+
+    def follower_count(self, obj):
+        return obj.userprofile_set.count()
+
+    follower_count.short_description = 'Followers'
 
 
 @admin.register(Category)
@@ -50,6 +55,37 @@ class AuthorAdmin(admin.ModelAdmin):
     article_count.short_description = 'Articles'
 
 
+@admin.register(UserProfile)
+class UserProfileAdmin(admin.ModelAdmin):
+    list_display = ['user', 'followed_sources_count', 'preferred_categories_count', 'created_at']
+    list_filter = ['created_at']
+    search_fields = ['user__username']
+    filter_horizontal = ['followed_sources', 'preferred_categories']
+
+    def followed_sources_count(self, obj):
+        return obj.followed_sources.count()
+
+    followed_sources_count.short_description = 'Sources Followed'
+
+    def preferred_categories_count(self, obj):
+        return obj.preferred_categories.count()
+
+    preferred_categories_count.short_description = 'Categories Preferred'
+
+
+@admin.register(ArticleView)
+class ArticleViewAdmin(admin.ModelAdmin):
+    list_display = ['user', 'article_title', 'viewed_at', 'duration_seconds']
+    list_filter = ['viewed_at', 'user']
+    search_fields = ['user__username', 'article__title']
+    readonly_fields = ['viewed_at']
+
+    def article_title(self, obj):
+        return obj.article.title[:50] + "..." if len(obj.article.title) > 50 else obj.article.title
+
+    article_title.short_description = 'Article'
+
+
 class ScrapingLogInline(admin.TabularInline):
     model = ScrapingLog
     extra = 0
@@ -60,14 +96,15 @@ class ScrapingLogInline(admin.TabularInline):
 @admin.register(Article)
 class ArticleAdmin(admin.ModelAdmin):
     list_display = [
-        'external_id','title_short', 'category', 'author', 'word_count',
-        'has_full_content', 'scraped_at', 'view_article', 'source'
+        'external_id', 'title_short', 'category', 'author', 'word_count',
+        'read_time_minutes', 'has_full_content', 'scraped_at', 'published_at',
+        'view_count', 'view_article', 'source'
     ]
     list_filter = [
         'source', 'category', 'has_full_content', 'scraped_at', 'tags'
     ]
     search_fields = ['title', 'content', 'author__name']
-    readonly_fields = ['external_id', 'url', 'scraped_at', 'updated_at']
+    readonly_fields = ['external_id', 'url', 'scraped_at', 'updated_at', 'published_at']
     filter_horizontal = ['tags']
     date_hierarchy = 'scraped_at'
 
@@ -76,7 +113,7 @@ class ArticleAdmin(admin.ModelAdmin):
             'fields': ('title', 'slug', 'url', 'external_id', 'source')
         }),
         ('Content', {
-            'fields': ('excerpt', 'content', 'word_count', 'paragraph_count')
+            'fields': ('excerpt', 'content', 'word_count', 'paragraph_count', 'read_time_minutes')
         }),
         ('Media', {
             'fields': ('featured_image_url', 'image_caption')
@@ -85,7 +122,7 @@ class ArticleAdmin(admin.ModelAdmin):
             'fields': ('category', 'author', 'tags')
         }),
         ('Metadata', {
-            'fields': ('published_time_str', 'scraped_at', 'updated_at', 'has_full_content')
+            'fields': ('published_time_str', 'published_at', 'scraped_at', 'updated_at', 'has_full_content')
         }),
     )
 
@@ -93,6 +130,11 @@ class ArticleAdmin(admin.ModelAdmin):
         return obj.title[:50] + "..." if len(obj.title) > 50 else obj.title
 
     title_short.short_description = 'Title'
+
+    def view_count(self, obj):
+        return obj.views.count()
+
+    view_count.short_description = 'Views'
 
     def view_article(self, obj):
         return format_html(
@@ -134,6 +176,7 @@ class ScrapingRunAdmin(admin.ModelAdmin):
             'fields': ('error_message',)
         }),
     )
+
 
 @admin.register(ScrapingLog)
 class ScrapingLogAdmin(admin.ModelAdmin):
