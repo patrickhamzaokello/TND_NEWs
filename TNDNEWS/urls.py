@@ -37,6 +37,8 @@ urlpatterns = [
     path('auth/', include('tnd_apps.authentication.urls')),
     path('social_auth/', include(('tnd_apps.social_auth.urls', 'social_auth'), namespace="social_auth")),
 
+    path('news/', include(('tnd_apps.news_scrapping.urls', 'news_scrapping'), namespace="news_scrapping")),
+
     path('health/', health_check, name='health_check'),
 
 
