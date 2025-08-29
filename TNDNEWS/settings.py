@@ -126,8 +126,8 @@ DATABASES = {
     }
 }
 
-CELERY_BROKER_URL = config('CELERY_BROKER_URL')
-CELERY_RESULT_BACKEND = config('CELERY_BROKER_URL')
+CELERY_BROKER_URL = f"redis://:{config('REDIS_PASSWORD')}@redis:6379/0"
+CELERY_RESULT_BACKEND = f"redis://:{config('REDIS_PASSWORD')}@redis:6379/2"
 # Celery task settings
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
