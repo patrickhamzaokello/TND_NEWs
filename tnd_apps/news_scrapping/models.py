@@ -2,6 +2,8 @@ from django.db import models
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 import uuid
+from dateutil import parser
+from django.conf import settings
 
 
 class NewsSource(models.Model):
@@ -19,6 +21,7 @@ class NewsSource(models.Model):
         db_table = 'news_sources'
 
 
+
 class Category(models.Model):
     """Model for news categories"""
     name = models.CharField(max_length=100, unique=True)
@@ -32,6 +35,19 @@ class Category(models.Model):
         db_table = 'categories'
         verbose_name_plural = 'Categories'
 
+
+class UserProfile(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='user_profiles',
+    )
+    followed_sources = models.ManyToManyField(NewsSource, blank=True)
+    preferred_categories = models.ManyToManyField(Category, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"Profile for {self.user.username}"
 
 class Tag(models.Model):
     """Model for news tags"""
@@ -88,6 +104,7 @@ class Article(models.Model):
 
     # Timestamps
     published_time_str = models.CharField(max_length=100, blank=True)  # "7 hours ago"
+    published_at = models.DateTimeField(null=True, blank=True)
     scraped_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -95,10 +112,20 @@ class Article(models.Model):
     is_processed = models.BooleanField(default=False)
     has_full_content = models.BooleanField(default=False)
 
+    #read time
+    read_time_minutes = models.IntegerField(default=0)
+
     def save(self, *args, **kwargs):
         if not self.slug and self.title:
             from django.utils.text import slugify
             self.slug = slugify(self.title)[:200]
+        if self.word_count > 0:
+            self.read_time_minutes = max(1, self.word_count // 200) #200-250 words per minute
+        if self.published_time_str and not self.published_at:
+            try:
+                self.published_at = parser.parse(self.published_time_str, fuzzy=True)
+            except:
+                pass # fallback to scraped_at
         super().save(*args, **kwargs)
 
     def clean(self):
@@ -119,6 +146,19 @@ class Article(models.Model):
             models.Index(fields=['published_time_str']),
         ]
 
+#Track article views
+class ArticleView(models.Model):
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='user_article_views',
+    )
+    article = models.ForeignKey(Article, on_delete=models.CASCADE, related_name='views')
+    viewed_at = models.DateTimeField(auto_now_add=True)
+    duration_seconds = models.IntegerField(default=0, blank=True)
+
+    class Meta:
+        unique_together = ['user', 'article', 'viewed_at'] #prevent duplicates
 
 class ScrapingRun(models.Model):
     """Model to track each scraping run"""
