@@ -44,19 +44,13 @@ class TNDNewsDjangoScraper:
         if not category_name:
             return None
     
+        # Use slug as the lookup field since it has the unique constraint
         category_slug = slugify(category_name)
-        
-        try:
-            # First try to get by slug
-            category = Category.objects.get(slug=category_slug)
-            return category
-        except Category.DoesNotExist:
-            # If not found by slug, create new one
-            category, created = Category.objects.get_or_create(
-                slug=category_slug,
-                defaults={'name': category_name}
-            )
-            return category
+        category, created = Category.objects.get_or_create(
+            slug=category_slug,  # Use slug for lookup
+            defaults={'name': category_name}
+        )
+        return category
 
     def get_or_create_tag(self, tag_name):
         """Get or create a tag"""
