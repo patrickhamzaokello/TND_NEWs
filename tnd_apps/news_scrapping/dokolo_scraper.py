@@ -43,10 +43,12 @@ class DokoloPostDjangoScraper:
         """Get or create a category"""
         if not category_name:
             return None
-
+    
+        # Use slug as the lookup field since it has the unique constraint
+        category_slug = slugify(category_name)
         category, created = Category.objects.get_or_create(
-            name=category_name,
-            defaults={'slug': slugify(category_name)}
+            slug=category_slug,  # Use slug for lookup
+            defaults={'name': category_name}
         )
         return category
 
@@ -54,10 +56,11 @@ class DokoloPostDjangoScraper:
         """Get or create a tag"""
         if not tag_name:
             return None
-
+    
+        tag_slug = slugify(tag_name)
         tag, created = Tag.objects.get_or_create(
-            name=tag_name,
-            defaults={'slug': slugify(tag_name)}
+            slug=tag_slug,  # Use slug for lookup
+            defaults={'name': tag_name}
         )
         return tag
 
