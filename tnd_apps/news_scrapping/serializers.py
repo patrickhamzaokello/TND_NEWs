@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import NewsSource, Category, Tag, Author, Article, UserProfile, ArticleView
+from .models import NewsSource,Comment, Category, Tag, Author, Article, UserProfile, ArticleView
 
 
 class NewsSourceSerializer(serializers.ModelSerializer):
@@ -47,6 +47,32 @@ class ArticleSerializer(serializers.ModelSerializer):
             'has_full_content', 'view_count'
         ]
 
+class CommentSerializer(serializers.ModelSerializer):
+    user = serializers.StringRelatedField(read_only=True)  # Display username
+    replies = serializers.SerializerMethodField()  # Nested replies
+    article = serializers.PrimaryKeyRelatedField(queryset=Article.objects.all())
+
+    class Meta:
+        model = Comment
+        fields = ['id', 'article', 'user', 'content', 'parent', 'created_at', 'updated_at', 'is_approved', 'replies']
+        read_only_fields = ['user', 'created_at', 'updated_at', 'is_approved']
+
+    def get_replies(self, obj):
+        # Recursively serialize replies (only if they exist)
+        if obj.replies.exists():
+            return CommentSerializer(obj.replies.filter(is_approved=True), many=True).data
+        return []
+
+    def validate(self, data):
+        # Ensure parent comment belongs to the same article
+        if data.get('parent') and data['parent'].article != data['article']:
+            raise serializers.ValidationError("Reply must belong to the same article as the parent comment.")
+        return data
+
+    def create(self, validated_data):
+        # Set the user from the request context
+        validated_data['user'] = self.context['request'].user
+        return super().create(validated_data)
 
 class UserProfileSerializer(serializers.ModelSerializer):
     followed_sources = NewsSourceSerializer(many=True, read_only=True)

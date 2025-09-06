@@ -5,11 +5,13 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/dm_scrapper.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/Dockerfile" beforeDir="false" afterPath="$PROJECT_DIR$/Dockerfile" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/tasks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/models.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/serializers.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/serializers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/urls.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/views.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -110,7 +112,9 @@
       <workItem from="1756456008207" duration="7945000" />
       <workItem from="1756493047790" duration="2706000" />
       <workItem from="1756797878006" duration="19000" />
-      <workItem from="1757081041670" duration="6895000" />
+      <workItem from="1757081041670" duration="7171000" />
+      <workItem from="1757090935753" duration="940000" />
+      <workItem from="1757154514843" duration="5291000" />
     </task>
     <servers />
   </component>

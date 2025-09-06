@@ -7,8 +7,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Q
 from datetime import timedelta
 from django.utils import timezone
-from .models import NewsSource, Article, UserProfile, ArticleView
-from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleViewSerializer,UserProfileSerializer
+from .models import NewsSource, Article, UserProfile, ArticleView, Comment
+from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleViewSerializer, UserProfileSerializer, \
+    CommentSerializer
 
 
 # Views
@@ -93,6 +94,13 @@ class ArticleViewSet(viewsets.ModelViewSet):
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
+    @action(detail=True, methods=['get'])
+    def comments(self, request, pk=None):
+        article = self.get_object()
+        # Fetch top-level comments only (parent__isnull=True)
+        comments = Comment.objects.filter(article=article, parent__isnull=True, is_approved=True).select_related('user').prefetch_related('replies')
+        serializer = CommentSerializer(comments, many=True, context={'request': request})
+        return Response(serializer.data)
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
@@ -103,3 +111,32 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         return self.queryset.filter(user=self.request.user)
 
 
+class CommentViewSet(viewsets.ModelViewSet):
+    queryset = Comment.objects.filter(is_approved=True)
+    serializer_class = CommentSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        # Restrict to approved comments; further filtering in actions
+        return self.queryset.select_related('user', 'article', 'parent').prefetch_related('replies')
+
+    def create(self, request, *args, **kwargs):
+        # Create a top-level comment
+        serializer = self.get_serializer(data=request.data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @action(detail=True, methods=['post'])
+    def reply(self, request, pk=None):
+        # Create a reply to an existing comment
+        parent_comment = self.get_object()
+        data = request.data.copy()
+        data['parent'] = parent_comment.id
+        data['article'] = parent_comment.article.id  # Ensure reply uses parent's article
+        serializer = self.get_serializer(data=data, context={'request': request})
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)

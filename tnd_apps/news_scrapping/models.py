@@ -149,6 +149,57 @@ class Article(models.Model):
             models.Index(fields=['published_time_str']),
         ]
 
+
+class Comment(models.Model):
+    """Model for user comments on articles, supporting threaded replies."""
+
+    # Relationships
+    article = models.ForeignKey(
+        'Article',  # Use string reference to avoid import cycles
+        on_delete=models.CASCADE,
+        related_name='comments'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='comments'
+    )
+    parent = models.ForeignKey(
+        'self',
+        on_delete=models.CASCADE,
+        null=True,
+        blank=True,
+        related_name='replies'
+    )
+
+    # Content
+    content = models.TextField()
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    # Status
+    is_approved = models.BooleanField(default=True)  # For moderation if needed
+
+    def clean(self):
+        if not self.content.strip():
+            raise ValidationError('Comment content cannot be empty.')
+        if self.parent and self.parent.article != self.article:
+            raise ValidationError('Reply must belong to the same article as the parent comment.')
+
+    def __str__(self):
+        return f"Comment by {self.user.username} on {self.article.title[:50]}..."
+
+    class Meta:
+        db_table = 'comments'
+        ordering = ['created_at']  # Oldest first; change to ['-created_at'] for newest first
+        indexes = [
+            models.Index(fields=['article', 'created_at']),  # For fetching comments per article
+            models.Index(fields=['user', 'created_at']),     # For fetching user comments
+            models.Index(fields=['parent']),                 # For reply trees
+        ]
+
 #Track article views
 class ArticleView(models.Model):
     user = models.ForeignKey(

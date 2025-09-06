@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from .models import (
     NewsSource, Category, Tag, Author, Article,
-    ScrapingRun, ScrapingLog, UserProfile, ArticleView
+    ScrapingRun, ScrapingLog, UserProfile, ArticleView, Comment
 )
 
 
@@ -144,6 +144,14 @@ class ArticleAdmin(admin.ModelAdmin):
 
     view_article.short_description = 'Original'
 
+@admin.register(Comment)
+class CommentAdmin(admin.ModelAdmin):
+    list_display = ['user', 'article', 'content', 'is_approved', 'created_at']
+    actions = ['approve_comments']
+
+    def approve_comments(self, request, queryset):
+        queryset.update(is_approved=True)
+    approve_comments.short_description = "Approve selected comments"
 
 @admin.register(ScrapingRun)
 class ScrapingRunAdmin(admin.ModelAdmin):
