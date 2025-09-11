@@ -3,7 +3,7 @@ from django.utils.html import format_html
 from django.urls import reverse
 from .models import (
     NewsSource, Category, Tag, Author, Article,
-    ScrapingRun, ScrapingLog, UserProfile, ArticleView, Comment
+    ScrapingRun, ScrapingLog, UserProfile, ArticleView, Comment, PushToken
 )
 
 
@@ -202,3 +202,25 @@ class ScrapingLogAdmin(admin.ModelAdmin):
         return obj.message[:100] + "..." if len(obj.message) > 100 else obj.message
 
     message_short.short_description = 'Message'
+
+
+@admin.register(PushToken)
+class PushTokenAdmin(admin.ModelAdmin):
+    list_display = ['user', 'token_short', 'platform', 'is_active', 'last_used', 'created_at']
+    list_filter = ['platform', 'is_active', 'created_at', 'last_used']
+    search_fields = ['user__username', 'token', 'device_id']
+    readonly_fields = ['created_at', 'updated_at', 'last_used']
+
+    fieldsets = (
+        ('Token Information', {
+            'fields': ('user', 'token', 'device_id', 'platform', 'is_active')
+        }),
+        ('Timestamps', {
+            'fields': ('created_at', 'updated_at', 'last_used')
+        }),
+    )
+
+    def token_short(self, obj):
+        return obj.token[:20] + "..." if len(obj.token) > 20 else obj.token
+
+    token_short.short_description = 'Token'
