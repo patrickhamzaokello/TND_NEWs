@@ -7,7 +7,6 @@
     <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/docker-compose.yml" beforeDir="false" afterPath="$PROJECT_DIR$/docker-compose.yml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/models.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/models.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/serializers.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/serializers.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/urls.py" afterDir="false" />
@@ -114,7 +113,9 @@
       <workItem from="1756797878006" duration="19000" />
       <workItem from="1757081041670" duration="7171000" />
       <workItem from="1757090935753" duration="940000" />
-      <workItem from="1757154514843" duration="5291000" />
+      <workItem from="1757154514843" duration="6301000" />
+      <workItem from="1757253304443" duration="2923000" />
+      <workItem from="1757601393298" duration="1525000" />
     </task>
     <servers />
   </component>

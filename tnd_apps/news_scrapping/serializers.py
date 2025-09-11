@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import NewsSource,Comment, Category, Tag, Author, Article, UserProfile, ArticleView
+from .models import NewsSource, Comment, Category, Tag, Author, Article, UserProfile, ArticleView, PushToken
 
 
 class NewsSourceSerializer(serializers.ModelSerializer):
@@ -46,6 +46,52 @@ class ArticleSerializer(serializers.ModelSerializer):
             'source', 'category', 'author', 'tags', 'published_at', 'scraped_at',
             'has_full_content', 'view_count'
         ]
+
+
+class PushTokenSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PushToken
+        fields = ['id', 'token', 'device_id', 'platform', 'is_active', 'last_used', 'created_at']
+        read_only_fields = ['id', 'last_used', 'created_at']
+
+    def validate_token(self, value):
+        """Validate push token format"""
+        if not value.strip():
+            raise serializers.ValidationError("Token cannot be empty.")
+
+        # Validate Expo push token format
+        if value.startswith('ExponentPushToken['):
+            if not value.endswith(']') or len(value) < 20:
+                raise serializers.ValidationError("Invalid Expo push token format.")
+
+        return value
+
+
+class PushTokenCreateSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PushToken
+        fields = ['token', 'device_id', 'platform']
+
+    def validate_token(self, value):
+        """Validate push token format"""
+        if not value.strip():
+            raise serializers.ValidationError("Token cannot be empty.")
+
+        # Validate Expo push token format
+        if value.startswith('ExponentPushToken['):
+            if not value.endswith(']') or len(value) < 20:
+                raise serializers.ValidationError("Invalid Expo push token format.")
+
+        return value
+
+
+class TokenUpdateUsageSerializer(serializers.Serializer):
+    token = serializers.CharField(max_length=200)
+
+    def validate_token(self, value):
+        if not value.strip():
+            raise serializers.ValidationError("Token cannot be empty.")
+        return value
 
 class CommentSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField(read_only=True)  # Display username

@@ -150,6 +150,57 @@ class Article(models.Model):
         ]
 
 
+class PushToken(models.Model):
+    """Model to store user push notification tokens"""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='push_tokens'
+    )
+    token = models.CharField(max_length=200, unique=True)
+
+    # Device/platform info
+    device_id = models.CharField(max_length=100, blank=True)
+    platform = models.CharField(
+        max_length=20,
+        choices=[
+            ('ios', 'iOS'),
+            ('android', 'Android'),
+            ('web', 'Web'),
+        ],
+        blank=True
+    )
+
+    # Status tracking
+    is_active = models.BooleanField(default=True)
+    last_used = models.DateTimeField(null=True, blank=True)
+
+    # Timestamps
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def clean(self):
+        if not self.token.strip():
+            raise ValidationError('Push token cannot be empty.')
+
+        # Basic validation for Expo push tokens
+        if self.token.startswith('ExponentPushToken[') and not self.token.endswith(']'):
+            raise ValidationError('Invalid Expo push token format.')
+
+    def __str__(self):
+        return f"Push token for {self.user.username} ({self.platform or 'unknown'})"
+
+    class Meta:
+        db_table = 'push_tokens'
+        ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['user', 'is_active']),
+            models.Index(fields=['token']),
+            models.Index(fields=['last_used']),
+        ]
+        unique_together = ['user', 'device_id']  # One token per user per device
+
 class Comment(models.Model):
     """Model for user comments on articles, supporting threaded replies."""
 
