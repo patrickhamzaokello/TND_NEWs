@@ -7,9 +7,9 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Q
 from datetime import timedelta
 from django.utils import timezone
-from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken
+from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category
 from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleViewSerializer, UserProfileSerializer, \
-    CommentSerializer
+    CommentSerializer, CategorySerializer
 
 from .serializers import (
     PushTokenSerializer,
@@ -37,7 +37,24 @@ class NewsSourceViewSet(viewsets.ModelViewSet):
         profile.followed_sources.remove(source)
         return Response({'status': 'unfollowed'}, status=status.HTTP_200_OK)
 
+class CategoryViewSet(viewsets.ModelViewSet):
+    queryset = Category.objects.all()
+    serializer_class = CategorySerializer
+    permission_classes = [IsAuthenticated]
 
+    @action(detail=True, methods=['post'])
+    def subscribe(self, request, pk=None):
+        category = self.get_object()
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        profile.preferred_categories.add(category)
+        return Response({'status': 'subscribed'}, status=status.HTTP_200_OK)
+
+    @action(detail=True, methods=['post'])
+    def unsubscribe(self, request, pk=None):
+        category = self.get_object()
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        profile.preferred_categories.remove(category)
+        return Response({'status': 'unsubscribed'}, status=status.HTTP_200_OK)
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
@@ -114,6 +131,12 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         return self.queryset.filter(user=self.request.user)
+
+    @action(detail=False, methods=['get'])
+    def subscribed_categories(self, request):
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        serializer = CategorySerializer(profile.preferred_categories.all(), many=True)
+        return Response(serializer.data)
 
 
 class CommentViewSet(viewsets.ModelViewSet):
