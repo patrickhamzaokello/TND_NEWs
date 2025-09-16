@@ -138,6 +138,52 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         serializer = CategorySerializer(profile.preferred_categories.all(), many=True)
         return Response(serializer.data)
 
+    @action(detail=False, methods=['post'])
+    def update_categories(self, request):
+        """
+        Update user's preferred categories in bulk.
+        POST /api/profiles/update_categories/
+        {
+            "category_ids": [1, 2, 3, 4, 5]
+        }
+        """
+        category_ids = request.data.get('category_ids', [])
+        if not isinstance(category_ids, list):
+            return Response(
+                {'error': 'category_ids must be a list'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+        if len(category_ids) < 5:
+            return Response(
+                {'error': 'At least 5 categories must be selected'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Validate category IDs
+        try:
+            categories = Category.objects.filter(id__in=category_ids)
+            if len(categories) != len(category_ids):
+                return Response(
+                    {'error': 'One or more category IDs are invalid'},
+                    status=status.HTTP_400_BAD_REQUEST
+                )
+        except ValueError:
+            return Response(
+                {'error': 'Invalid category IDs provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Update user's profile
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        profile.preferred_categories.set(categories)
+        profile.save()
+
+        serializer = CategorySerializer(profile.preferred_categories.all(), many=True)
+        return Response({
+            'message': 'Categories updated successfully',
+            'categories': serializer.data
+        }, status=status.HTTP_200_OK)
+
 
 class CommentViewSet(viewsets.ModelViewSet):
     queryset = Comment.objects.filter(is_approved=True)
