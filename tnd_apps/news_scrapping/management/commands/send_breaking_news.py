@@ -96,23 +96,23 @@ class Command(BaseCommand):
         # If specific categories are targeted
         if breaking_news.target_categories.exists():
             base_query = base_query.filter(
-                userprofile__preferred_categories__in=breaking_news.target_categories.all()
+                user_profiles__preferred_categories__in=breaking_news.target_categories.all()
             )
         elif article.category:
             # Notify users who follow this category
             base_query = base_query.filter(
-                userprofile__preferred_categories=article.category
+                user_profiles__preferred_categories=article.category
             )
 
         # If specific sources are targeted
         if breaking_news.target_sources.exists():
             base_query = base_query.filter(
-                userprofile__followed_sources__in=breaking_news.target_sources.all()
+                user_profiles__followed_sources__in=breaking_news.target_sources.all()
             )
         elif article.source:
             # Notify users who follow this source
             base_query = base_query.filter(
-                userprofile__followed_sources=article.source
+                user_profiles__followed_sources=article.source
             )
 
         return base_query
