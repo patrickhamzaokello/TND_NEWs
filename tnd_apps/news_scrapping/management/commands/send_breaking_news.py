@@ -81,7 +81,7 @@ class Command(BaseCommand):
         for breaking_news in unsent_news:
             self.send_breaking_news_notification(breaking_news, dry_run)
     
-    def send_breaking_news_notification(self, breaking_news, dry_run=False):
+   def send_breaking_news_notification(self, breaking_news, dry_run=False):
         """Send breaking news notification to relevant users"""
         
         article = breaking_news.article
@@ -95,79 +95,58 @@ class Command(BaseCommand):
             ))
             return
         
-        successful_deliveries = 0
-        failed_deliveries = 0
+        # Collect all messages for batch sending
+        all_messages = []
         
         for user in users_to_notify:
-            try:
-                self.send_to_user(user, article, breaking_news.priority)
-                successful_deliveries += 1
+            user_messages = self.prepare_user_breaking_news(user, article, breaking_news.priority)
+            all_messages.extend(user_messages)
+        
+        # Send all notifications in batch
+        if all_messages:
+            success = self.send_push_notification_batch(all_messages)
+            
+            if success:
+                # Update breaking news record
+                breaking_news.is_sent = True
+                breaking_news.sent_at = timezone.now()
+                breaking_news.total_recipients = users_to_notify.count()
+                breaking_news.successful_deliveries = len(all_messages)
+                breaking_news.failed_deliveries = 0
+                breaking_news.save()
                 
-            except Exception as e:
-                logger.error(f"Failed to send to user {user.username}: {e}")
-                failed_deliveries += 1
-        
-        # Update breaking news record
-        breaking_news.is_sent = True
-        breaking_news.sent_at = timezone.now()
-        breaking_news.total_recipients = users_to_notify.count()
-        breaking_news.successful_deliveries = successful_deliveries
-        breaking_news.failed_deliveries = failed_deliveries
-        breaking_news.save()
-        
-        self.stdout.write(self.style.SUCCESS(
-            f"Sent breaking news to {successful_deliveries} users, "
-            f"{failed_deliveries} failures"
-        ))
+                self.stdout.write(self.style.SUCCESS(
+                    f"Sent breaking news to {len(all_messages)} devices across {users_to_notify.count()} users"
+                ))
+            else:
+                self.stdout.write(self.style.ERROR(
+                    "Failed to send breaking news notifications"
+                ))
     
-    def get_users_to_notify(self, breaking_news):
-        """Get users who should receive this breaking news"""
-        from django.contrib.auth import get_user_model
-        User = get_user_model()
-        
-        base_query = User.objects.filter(
-            push_tokens__is_active=True  # Only users with active push tokens
-        ).distinct()
-        
-        # Apply filters based on breaking news targeting
-        article = breaking_news.article
-        
-        # If specific categories are targeted
-        if breaking_news.target_categories.exists():
-            base_query = base_query.filter(
-                user_profiles__preferred_categories__in=breaking_news.target_categories.all()
-            )
-        elif article.category:
-            # Notify users who follow this category
-            base_query = base_query.filter(
-                user_profiles__preferred_categories=article.category
-            )
-        
-        # If specific sources are targeted
-        if breaking_news.target_sources.exists():
-            base_query = base_query.filter(
-                user_profiles__followed_sources__in=breaking_news.target_sources.all()
-            )
-        else:
-            # Notify users who follow this source
-            base_query = base_query.filter(
-                user_profiles__followed_sources=article.source
-            )
-        
-        return base_query
-    
-    def send_to_user(self, user, article, priority):
-        """Send breaking news to a specific user"""
+    def prepare_user_breaking_news(self, user, article, priority):
+        """Prepare breaking news messages for a user"""
         
         push_tokens = PushToken.objects.filter(user=user, is_active=True)
         
         if not push_tokens:
-            return
+            return []
         
         message = self.create_breaking_news_message(article, priority)
+        messages = []
         
         for token in push_tokens:
-            self.send_push_notification(token.token, message)
+            user_message = message.copy()
+            user_message['token'] = token.token
+            user_message['metadata'] = {
+                'userId': user.id,
+                'notificationType': 'breaking_news',
+                'articleId': article.id,
+                'priority': priority,
+                'source': 'news_app'
+            }
+            messages.append(user_message)
+        
+        return messages
     
     def create_breaking_news_message(self, article, priority):
         """Create the breaking news notification message"""
@@ -184,48 +163,43 @@ class Command(BaseCommand):
         return {
             'title': f'{icon} Breaking News: {article.source.name}',
             'body': article.title,
-            'data': {
-                'type': 'breaking_news',
-                'article_id': str(article.id),
-                'priority': priority,
-                'url': article.url,
-                'source': article.source.name
-            },
-            'priority': 'high' if priority in ['high', 'critical'] else 'normal'
         }
     
-    def send_push_notification(self, token, message):
-        """Send push notification using Expo"""
+    def send_push_notification_batch(self, messages):
+        """Send batch push notifications using your API endpoint"""
         try:
             import requests
             
-            payload = {
-                'to': token,
-                'title': message['title'],
-                'body': message['body'],
-                'data': message['data'],
-                'sound': 'default',
-                'badge': 1,
-                'priority': message.get('priority', 'normal')
-            }
+            api_url = 'http://78.46.148.145:4000/api/push-notification'
             
-            # For critical breaking news, use different sound
-            if message['data'].get('priority') in ['high', 'critical']:
-                payload['sound'] = 'alert'
+            # Split into batches of 100
+            batch_size = 100
+            success_count = 0
             
-            response = requests.post(
-                'https://exp.host/--/api/v2/push/send',
-                json=payload,
-                headers={
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json',
-                }
-            )
-            
-            if response.status_code != 200:
-                logger.error(f"Push notification failed: {response.text}")
-                raise Exception(f"HTTP {response.status_code}: {response.text}")
+            for i in range(0, len(messages), batch_size):
+                batch = messages[i:i + batch_size]
                 
+                payload = {
+                    'messages': batch
+                }
+                
+                response = requests.post(
+                    api_url,
+                    json=payload,
+                    headers={
+                        'Content-Type': 'application/json',
+                    },
+                    timeout=30
+                )
+                
+                if response.status_code == 200:
+                    logger.info(f"Successfully sent batch of {len(batch)} breaking news notifications")
+                    success_count += len(batch)
+                else:
+                    logger.error(f"API returned status {response.status_code}: {response.text}")
+            
+            return success_count > 0
+            
         except Exception as e:
-            logger.error(f"Error sending push notification: {e}")
-            raise
+            logger.error(f"Error sending push notifications: {e}")
+            return False
