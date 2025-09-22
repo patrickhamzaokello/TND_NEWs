@@ -2,7 +2,7 @@
 from django.core.management.base import BaseCommand
 from django.utils import timezone
 from django.db.models import Q
-from news_scrapping.models import BreakingNews, Article, PushToken, UserProfile
+from tnd_apps.news_scrapping.models import BreakingNews, Article, PushToken, UserProfile
 import logging
 
 logger = logging.getLogger(__name__)
@@ -81,7 +81,7 @@ class Command(BaseCommand):
         for breaking_news in unsent_news:
             self.send_breaking_news_notification(breaking_news, dry_run)
     
-   def send_breaking_news_notification(self, breaking_news, dry_run=False):
+    def send_breaking_news_notification(self, breaking_news, dry_run=False):
         """Send breaking news notification to relevant users"""
         
         article = breaking_news.article
@@ -124,16 +124,17 @@ class Command(BaseCommand):
                 ))
     
     def prepare_user_breaking_news(self, user, article, priority):
+
         """Prepare breaking news messages for a user"""
-        
+
         push_tokens = PushToken.objects.filter(user=user, is_active=True)
-        
+
         if not push_tokens:
             return []
-        
+
         message = self.create_breaking_news_message(article, priority)
         messages = []
-        
+
         for token in push_tokens:
             user_message = message.copy()
             user_message['token'] = token.token
@@ -145,44 +146,44 @@ class Command(BaseCommand):
                 'source': 'news_app'
             }
             messages.append(user_message)
-        
+
         return messages
-    
+
     def create_breaking_news_message(self, article, priority):
         """Create the breaking news notification message"""
-        
+
         priority_icons = {
             'low': '📢',
             'medium': '🚨',
             'high': '🔥',
             'critical': '⚡'
         }
-        
+
         icon = priority_icons.get(priority, '📢')
-        
+
         return {
             'title': f'{icon} Breaking News: {article.source.name}',
             'body': article.title,
         }
-    
+
     def send_push_notification_batch(self, messages):
         """Send batch push notifications using your API endpoint"""
         try:
             import requests
-            
+
             api_url = 'http://78.46.148.145:4000/api/push-notification'
-            
+
             # Split into batches of 100
             batch_size = 100
             success_count = 0
-            
+
             for i in range(0, len(messages), batch_size):
                 batch = messages[i:i + batch_size]
-                
+
                 payload = {
                     'messages': batch
                 }
-                
+
                 response = requests.post(
                     api_url,
                     json=payload,
@@ -191,15 +192,15 @@ class Command(BaseCommand):
                     },
                     timeout=30
                 )
-                
+
                 if response.status_code == 200:
                     logger.info(f"Successfully sent batch of {len(batch)} breaking news notifications")
                     success_count += len(batch)
                 else:
                     logger.error(f"API returned status {response.status_code}: {response.text}")
-            
+
             return success_count > 0
-            
+
         except Exception as e:
             logger.error(f"Error sending push notifications: {e}")
             return False

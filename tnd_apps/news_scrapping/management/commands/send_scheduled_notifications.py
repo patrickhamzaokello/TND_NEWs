@@ -1,7 +1,7 @@
 # management/commands/send_scheduled_notifications.py (updated)
 from django.core.management.base import BaseCommand
 from django.utils import timezone
-from news_scrapping.models import ScheduledNotification, Article, PushToken, UserProfile
+from tnd_apps.news_scrapping.models import ScheduledNotification, Article, PushToken, UserProfile
 from datetime import timedelta
 import logging
 
