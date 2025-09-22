@@ -1,5 +1,6 @@
 import os
 from celery import Celery
+from celery.schedules import crontab
 
 os.environ.setdefault('DJANGO_SETTINGS_MODULE', 'TNDNEWS.settings')
 
@@ -9,7 +10,7 @@ celery_app.autodiscover_tasks()
 
 celery_app.conf.timezone = 'UTC'
 
-app.conf.beat_schedule = {
+celery_app.conf.beat_schedule = {
     'send-scheduled-notifications': {
         'task': 'news_scrapping.tasks.send_scheduled_notifications',
         'schedule': crontab(minute='*/15'),  # Every 15 minutes
