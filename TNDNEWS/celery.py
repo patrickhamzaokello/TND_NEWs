@@ -9,6 +9,13 @@ celery_app.autodiscover_tasks()
 
 celery_app.conf.timezone = 'UTC'
 
+app.conf.beat_schedule = {
+    'send-scheduled-notifications': {
+        'task': 'news_scrapping.tasks.send_scheduled_notifications',
+        'schedule': crontab(minute='*/15'),  # Every 15 minutes
+    },
+}
+
 # Celery beat schedule for periodic tasks
 celery_app.conf.beat_schedule = {
     'cleanup-failed-tasks': {
