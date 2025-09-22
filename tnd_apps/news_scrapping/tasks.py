@@ -6,7 +6,6 @@ from .dokolo_scraper import DokoloPostDjangoScraper
 from .models import ScrapingRun, ScrapingLog,ScheduledNotification
 from .dm_scrapper import MonitorNewsDjangoScraper
 import traceback
-from celery import shared_task
 from django.utils import timezone
 
 logger = get_task_logger(__name__)
