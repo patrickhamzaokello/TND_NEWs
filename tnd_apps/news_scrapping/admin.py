@@ -202,6 +202,15 @@ class ScrapingLogAdmin(admin.ModelAdmin):
         return obj.message[:100] + "..." if len(obj.message) > 100 else obj.message
 
     message_short.short_description = 'Message'
+    
+
+@admin.register(Article)
+class ArticleAdmin(admin.ModelAdmin):
+    actions = ['send_as_breaking_news']
+    
+    def send_as_breaking_news(self, request, queryset):
+        for article in queryset:
+            call_command('send_breaking_news', f'--article-id={article.id}')
 
 
 @admin.register(PushToken)
