@@ -125,33 +125,49 @@ class Command(BaseCommand):
                 }
             }
     
-    def send_push_notification(self, token, message):
-        """Send push notification using Expo or your preferred service"""
-        
-        # Example using Expo
+    def send_push_notification_batch(messages):
+        """Send batch push notifications using your API endpoint"""
         try:
             import requests
+            import json
+            
+            api_url = 'http://78.46.148.145:4000/api/push-notification'
+            
+            payload = {
+                'messages': messages
+            }
             
             response = requests.post(
-                'https://exp.host/--/api/v2/push/send',
-                json={
-                    'to': token,
-                    'title': message['title'],
-                    'body': message['body'],
-                    'data': message.get('data', {}),
-                    'sound': 'default',
-                    'badge': 1,
-                },
+                api_url,
+                json=payload,
                 headers={
-                    'Accept': 'application/json',
                     'Content-Type': 'application/json',
-                }
+                },
+                timeout=30  # 30 second timeout
             )
             
-            if response.status_code != 200:
-                logger.error(f"Push notification failed: {response.text}")
+            if response.status_code == 200:
+                logger.info(f"Successfully sent batch of {len(messages)} notifications")
+                return True
+            else:
+                logger.error(f"API returned status {response.status_code}: {response.text}")
+                return False
                 
-        except ImportError:
-            logger.warning("Expo SDK not installed, skipping push notification")
+        except requests.exceptions.Timeout:
+            logger.error("Push notification API timeout")
+            return False
+        except requests.exceptions.ConnectionError:
+            logger.error("Cannot connect to push notification API")
+            return False
         except Exception as e:
-            logger.error(f"Error sending push notification: {e}")
+            logger.error(f"Error sending push notifications: {e}")
+            return False
+    
+    def send_push_notification(token, message):
+        """Send single push notification (wrapper for batch)"""
+        return send_push_notification_batch([{
+            'token': token,
+            'title': message['title'],
+            'body': message['body'],
+            'metadata': message.get('metadata', {})
+        }])
