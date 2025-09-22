@@ -3,9 +3,11 @@ from celery.utils.log import get_task_logger
 from django.conf import settings
 from .scraper import TNDNewsDjangoScraper
 from .dokolo_scraper import DokoloPostDjangoScraper
-from .models import ScrapingRun, ScrapingLog
+from .models import ScrapingRun, ScrapingLog,ScheduledNotification
 from .dm_scrapper import MonitorNewsDjangoScraper
 import traceback
+from celery import shared_task
+from django.utils import timezone
 
 logger = get_task_logger(__name__)
 
@@ -153,6 +155,20 @@ def scrape_dokolo_post(self, get_full_content=True, max_articles=None, source_na
 
         raise exc
 
+@shared_task
+def send_scheduled_notifications():
+    """Celery task to send scheduled notifications"""
+    from django.core.management import call_command
+    call_command('send_scheduled_notifications')
+
+@shared_task
+def send_individual_notification(notification_id):
+    """Send notification to a specific user"""
+    try:
+        notification = ScheduledNotification.objects.get(id=notification_id)
+        # Implementation similar to above
+    except ScheduledNotification.DoesNotExist:
+        pass
 
 
 @shared_task
