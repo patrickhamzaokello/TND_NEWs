@@ -7,6 +7,7 @@ from .models import ScrapingRun, ScrapingLog,ScheduledNotification
 from .dm_scrapper import MonitorNewsDjangoScraper
 import traceback
 from django.utils import timezone
+from django.core.management import call_command
 
 logger = get_task_logger(__name__)
 
