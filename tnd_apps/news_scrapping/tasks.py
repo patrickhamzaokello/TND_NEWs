@@ -171,6 +171,44 @@ def send_individual_notification(notification_id):
 
 
 @shared_task
+def send_breaking_news_immediately(article_id=None, breaking_news_id=None):
+    """Celery task for immediate breaking news delivery"""
+    if article_id:
+        call_command('send_breaking_news', f'--article-id={article_id}')
+    elif breaking_news_id:
+        call_command('send_breaking_news', f'--breaking-news-id={breaking_news_id}')
+    else:
+        call_command('send_breaking_news')
+
+@shared_task
+def process_new_article_for_breaking_news(article_id):
+    """Check if new article should be breaking news"""
+    from .models import Article, BreakingNews
+    
+    try:
+        article = Article.objects.get(id=article_id)
+        
+        # Your breaking news detection logic here
+        if should_be_breaking_news(article):
+            breaking_news = BreakingNews.objects.create(
+                article=article,
+                priority='high'
+            )
+            # Send immediately
+            send_breaking_news_immediately.delay(breaking_news_id=breaking_news.id)
+            
+    except Article.DoesNotExist:
+        pass
+
+def should_be_breaking_news(article):
+    """Determine if article should be treated as breaking news"""
+    breaking_keywords = ['breaking', 'urgent', 'alert', 'crisis', 'disaster']
+    
+    title_lower = article.title.lower()
+    return any(keyword in title_lower for keyword in breaking_keywords)
+
+
+@shared_task
 def cleanup_old_scraping_logs(days_to_keep=30):
     """
     Clean up old scraping logs to prevent database bloat
