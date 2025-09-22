@@ -357,6 +357,45 @@ class ArticleView(models.Model):
     class Meta:
         unique_together = ['user', 'article', 'viewed_at'] #prevent duplicates
 
+class BreakingNews(models.Model):
+    """Model to track breaking news articles"""
+    
+    article = models.OneToOneField(
+        Article,
+        on_delete=models.CASCADE,
+        related_name='breaking_news'
+    )
+    
+    # Priority levels
+    PRIORITY_CHOICES = [
+        ('low', 'Low'),
+        ('medium', 'Medium'),
+        ('high', 'High'),
+        ('critical', 'Critical'),
+    ]
+    
+    priority = models.CharField(max_length=10, choices=PRIORITY_CHOICES, default='medium')
+    is_sent = models.BooleanField(default=False)
+    sent_at = models.DateTimeField(null=True, blank=True)
+    
+    # Target audience filters
+    target_categories = models.ManyToManyField(Category, blank=True)
+    target_sources = models.ManyToManyField(NewsSource, blank=True)
+    
+    # Analytics
+    total_recipients = models.IntegerField(default=0)
+    successful_deliveries = models.IntegerField(default=0)
+    failed_deliveries = models.IntegerField(default=0)
+    
+    created_at = models.DateTimeField(auto_now_add=True)
+    
+    def __str__(self):
+        return f"Breaking: {self.article.title[:50]}..."
+    
+    class Meta:
+        db_table = 'breaking_news'
+        verbose_name_plural = 'Breaking News'
+
 class ScrapingRun(models.Model):
     """Model to track each scraping run"""
 
