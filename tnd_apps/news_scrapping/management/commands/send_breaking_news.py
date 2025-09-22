@@ -80,6 +80,42 @@ class Command(BaseCommand):
         
         for breaking_news in unsent_news:
             self.send_breaking_news_notification(breaking_news, dry_run)
+
+    def get_users_to_notify(self, breaking_news):
+        """Get users who should receive this breaking news"""
+        from django.contrib.auth import get_user_model
+        User = get_user_model()
+
+        base_query = User.objects.filter(
+            push_tokens__is_active=True  # Only users with active push tokens
+        ).distinct()
+
+        # Apply filters based on breaking news targeting
+        article = breaking_news.article
+
+        # If specific categories are targeted
+        if breaking_news.target_categories.exists():
+            base_query = base_query.filter(
+                user_profiles__preferred_categories__in=breaking_news.target_categories.all()
+            )
+        elif article.category:
+            # Notify users who follow this category
+            base_query = base_query.filter(
+                user_profiles__preferred_categories=article.category
+            )
+
+        # If specific sources are targeted
+        if breaking_news.target_sources.exists():
+            base_query = base_query.filter(
+                user_profiles__followed_sources__in=breaking_news.target_sources.all()
+            )
+        else:
+            # Notify users who follow this source
+            base_query = base_query.filter(
+                user_profiles__followed_sources=article.source
+            )
+
+        return base_query
     
     def send_breaking_news_notification(self, breaking_news, dry_run=False):
         """Send breaking news notification to relevant users"""
