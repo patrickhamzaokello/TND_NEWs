@@ -251,6 +251,98 @@ class Comment(models.Model):
             models.Index(fields=['parent']),                 # For reply trees
         ]
 
+class ScheduledNotification(models.Model):
+    """Model to track scheduled news update notifications"""
+    
+    FREQUENCY_CHOICES = [
+        ('daily', 'Daily'),
+        ('weekly', 'Weekly'),
+        ('custom', 'Custom'),
+    ]
+    
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='scheduled_notifications'
+    )
+    frequency = models.CharField(max_length=10, choices=FREQUENCY_CHOICES, default='daily')
+    
+    # Scheduling
+    scheduled_time = models.TimeField(default=timezone.now)  # When to send daily
+    next_send_at = models.DateTimeField()  # Next scheduled send time
+    is_active = models.BooleanField(default=True)
+    
+    # Content preferences
+    max_articles = models.IntegerField(default=5)
+    include_categories = models.ManyToManyField(Category, blank=True)
+    include_sources = models.ManyToManyField(NewsSource, blank=True)
+    
+    # Tracking
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+    
+    def save(self, *args, **kwargs):
+        if not self.next_send_at:
+            self.calculate_next_send()
+        super().save(*args, **kwargs)
+    
+    def calculate_next_send(self):
+        """Calculate the next send time based on frequency"""
+        now = timezone.now()
+        
+        if self.frequency == 'daily':
+            # Set for same time tomorrow
+            next_send = now.replace(
+                hour=self.scheduled_time.hour,
+                minute=self.scheduled_time.minute,
+                second=0,
+                microsecond=0
+            ) + timezone.timedelta(days=1)
+            
+            # If today's time hasn't passed yet, send today
+            if now.time() < self.scheduled_time:
+                next_send = now.replace(
+                    hour=self.scheduled_time.hour,
+                    minute=self.scheduled_time.minute,
+                    second=0,
+                    microsecond=0
+                )
+            
+            self.next_send_at = next_send
+    
+    def __str__(self):
+        return f"Scheduled notifications for {self.user.username} ({self.frequency})"
+    
+    class Meta:
+        db_table = 'scheduled_notifications'
+        indexes = [
+            models.Index(fields=['next_send_at', 'is_active']),
+            models.Index(fields=['user', 'is_active']),
+        ]
+
+
+class NotificationTemplate(models.Model):
+    """Templates for different types of notifications"""
+    
+    NOTIFICATION_TYPES = [
+        ('daily_digest', 'Daily News Digest'),
+        ('breaking_news', 'Breaking News'),
+        ('category_update', 'Category Update'),
+    ]
+    
+    name = models.CharField(max_length=100)
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    title_template = models.CharField(max_length=200)
+    body_template = models.TextField()
+    is_active = models.BooleanField(default=True)
+    
+    def __str__(self):
+        return self.name
+    
+    class Meta:
+        db_table = 'notification_templates'
+
 #Track article views
 class ArticleView(models.Model):
     user = models.ForeignKey(
