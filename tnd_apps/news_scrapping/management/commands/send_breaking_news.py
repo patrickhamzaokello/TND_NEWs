@@ -175,9 +175,9 @@ class Command(BaseCommand):
             user_message = message.copy()
             user_message['token'] = token.token
             user_message['metadata'] = {
-                'userId': user.id,
+                'userId': str(user.id),
                 'notificationType': 'breaking_news',
-                'articleId': article.id,
+                'articleId': str(article.id),
                 'priority': priority,
                 'source': 'news_app'
             }

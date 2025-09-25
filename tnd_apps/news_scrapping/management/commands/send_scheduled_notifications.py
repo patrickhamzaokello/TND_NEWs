@@ -49,7 +49,7 @@ class Command(BaseCommand):
                     notification.last_sent_at = now
                     notification.calculate_next_send()
                     notification.save()
-                    sent_count += len([m for m in all_messages if m.get('user_id') == notification.user.id])
+                    sent_count += len([m for m in all_messages if m.get('user_id') == str(notification.user.id)])
         
         self.stdout.write(
             self.style.SUCCESS(
@@ -85,7 +85,7 @@ class Command(BaseCommand):
             message = base_message.copy()
             message['token'] = token.token
             message['metadata'] = {
-                'userId': notification.user.id,
+                'userId': str(notification.user.id),
                 'notificationType': 'scheduled_digest',
                 'articleCount': len(articles),
                 'source': 'news_app'
