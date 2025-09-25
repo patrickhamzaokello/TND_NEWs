@@ -3,6 +3,9 @@ name: tndnews_backend_project
 networks:
   tnd_network:
     driver: bridge
+  shared-pk-network:
+    external: true
+    name: shared-pk-network
 
 volumes:
   postgres_data:
@@ -63,6 +66,7 @@ services:
         condition: service_healthy
     networks:
       - tnd_network
+      - shared-pk-network
     ports:
       - "${APP_PORT:-6200}:6200"
     volumes:
@@ -138,6 +142,7 @@ services:
       - tnd_backend_app
     networks:
       - tnd_network
+      - shared-pk-network
 
   flower:
     image: tnd_backend_image
@@ -163,6 +168,7 @@ services:
       - ./logs:/app/logs  # If you need log access
     networks:
       - tnd_network
+      - shared-pk-network
     depends_on:
       redis:
         condition: service_healthy

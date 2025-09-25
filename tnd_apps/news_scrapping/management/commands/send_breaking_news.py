@@ -207,7 +207,7 @@ class Command(BaseCommand):
         try:
             import requests
 
-            api_url = 'http://78.46.148.145:4000/api/push-notification'
+            api_url = 'http://notification-service:4000/api/push-notification'
 
             # Split into batches of 100
             batch_size = 100
