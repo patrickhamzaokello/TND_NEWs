@@ -161,14 +161,6 @@ def send_scheduled_notifications():
     from django.core.management import call_command
     call_command('send_scheduled_notifications')
 
-@shared_task
-def send_individual_notification(notification_id):
-    """Send notification to a specific user"""
-    try:
-        notification = ScheduledNotification.objects.get(id=notification_id)
-        # Implementation similar to above
-    except ScheduledNotification.DoesNotExist:
-        pass
 
 
 @shared_task

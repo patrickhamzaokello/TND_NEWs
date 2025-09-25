@@ -96,13 +96,20 @@ class Command(BaseCommand):
     
     def get_recent_articles(self, notification):
         """Get recent articles based on user preferences"""
-        since_time = timezone.now() - timedelta(hours=24)
-        
+        logger.debug(f"Fetching recent articles for notification {notification.id}")
+        if notification.last_sent_at:
+            since_time = notification.last_sent_at
+        else:
+            since_time = timezone.now() - (
+                timedelta(days=7) if notification.frequency == 'weekly' else timedelta(hours=24))
+
+        logger.debug(f"Using time window since {since_time} for articles")
+
         queryset = Article.objects.filter(
-            published_at__gte=since_time,
+            scraped_at__gt=since_time,  # Changed from published_at to scraped_at
             is_processed=True
         )
-        
+
         # Apply user preferences from UserProfile
         try:
             user_profile = UserProfile.objects.get(user=notification.user)
@@ -137,7 +144,7 @@ class Command(BaseCommand):
                     source__in=notification.include_sources.all()
                 )
         
-        return queryset.order_by('-published_at')[:notification.max_articles]
+        return queryset.order_by('-scraped_at')[:notification.max_articles]
     
     def create_notification_message(self, articles, notification):
         """Create the notification message content"""
