@@ -130,8 +130,8 @@ class Command(BaseCommand):
             logger.info(f"Sample articles: {[f'{a.title} (scraped_at: {a.scraped_at}, is_processed: {a.is_processed})' for a in all_recent_articles[:3]]}")
         
         # Apply is_processed filter
-        queryset = all_recent_articles.filter(is_processed=True)
-        logger.info(f"After is_processed=True filter, found {queryset.count()} articles")
+        queryset = all_recent_articles.filter(is_processed=False)
+        logger.info(f"After is_processed=False filter, found {queryset.count()} articles")
         
         try:
             user_profile = UserProfile.objects.get(user=notification.user)
