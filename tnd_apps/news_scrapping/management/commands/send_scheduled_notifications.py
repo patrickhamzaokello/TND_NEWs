@@ -104,6 +104,7 @@ class Command(BaseCommand):
                 'userId': str(notification.user.id),
                 'notificationType': 'scheduled_digest',
                 'articleCount': len(articles),
+                'articleIds': [str(article.id) for article in articles],
                 'source': 'news_app'
             }
             messages.append(message)
@@ -192,16 +193,16 @@ class Command(BaseCommand):
         if len(articles) == 1:
             article = articles[0]
             logger.debug(f"Single article notification: {article.title}")
-            return {
-                'title': f'📰 {article.source.name}',
-                'body': article.title,
+             return {
+                "title": f"🔥 Hot from {article.source.name}",
+                "body": f"{article.title} — tap to get the full story!",
             }
         else:
             source_names = ', '.join(set(article.source.name for article in articles[:3]))
             logger.debug(f"Multi-article digest from sources: {source_names}")
-            return {
-                'title': '📰 Your News Digest',
-                'body': f'{len(articles)} new stories from {source_names}',
+             return {
+                "title": "📢 Your Daily News Fix",
+                "body": f"{len(articles)} must-read stories from {source_names} — don’t miss out!",
             }
     
     def send_push_notification_batch(self, messages):
