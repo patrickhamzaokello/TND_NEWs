@@ -14,7 +14,7 @@ class Command(BaseCommand):
         logger.info("Starting scheduled notifications task")
         now = timezone.now()
         
-        logger.debug(f"Current time: {now} (tz: {now.tzinfo})")
+        logger.info(f"Current time: {now} (tz: {now.tzinfo})")
         due_notifications = ScheduledNotification.objects.filter(
             next_send_at__lte=now,
             is_active=True
@@ -36,7 +36,7 @@ class Command(BaseCommand):
             try:
                 user_messages = self.prepare_user_notification(notification)
                 if user_messages:
-                    logger.debug(f"Prepared {len(user_messages)} messages for user {notification.user.username}")
+                    logger.info(f"Prepared {len(user_messages)} messages for user {notification.user.username}")
                     all_messages.extend(user_messages)
                     notification_records.append(notification)
                 else:
@@ -112,30 +112,30 @@ class Command(BaseCommand):
     
     def get_recent_articles(self, notification):
         """Get recent articles based on user preferences"""
-        logger.debug(f"Fetching recent articles for notification {notification.id} (user: {notification.user.username})")
+        logger.info(f"Fetching recent articles for notification {notification.id} (user: {notification.user.username})")
         now = timezone.now()
         if notification.last_sent_at:
             since_time = notification.last_sent_at
-            logger.debug(f"Using last_sent_at: {since_time} (tz: {since_time.tzinfo})")
+            logger.info(f"Using last_sent_at: {since_time} (tz: {since_time.tzinfo})")
         else:
             since_time = now - (timedelta(days=7) if notification.frequency == 'weekly' else timedelta(hours=24))
-            logger.debug(f"Using default window: {since_time} (tz: {since_time.tzinfo})")
+            logger.info(f"Using default window: {since_time} (tz: {since_time.tzinfo})")
         
-        logger.debug(f"Time window: articles scraped after {since_time}")
+        logger.info(f"Time window: articles scraped after {since_time}")
         
         # Log all recent articles before filtering
         all_recent_articles = Article.objects.filter(scraped_at__gt=since_time)
-        logger.debug(f"Found {all_recent_articles.count()} articles scraped after {since_time}")
+        logger.info(f"Found {all_recent_articles.count()} articles scraped after {since_time}")
         if all_recent_articles.exists():
-            logger.debug(f"Sample articles: {[f'{a.title} (scraped_at: {a.scraped_at}, is_processed: {a.is_processed})' for a in all_recent_articles[:3]]}")
+            logger.info(f"Sample articles: {[f'{a.title} (scraped_at: {a.scraped_at}, is_processed: {a.is_processed})' for a in all_recent_articles[:3]]}")
         
         # Apply is_processed filter
         queryset = all_recent_articles.filter(is_processed=True)
-        logger.debug(f"After is_processed=True filter, found {queryset.count()} articles")
+        logger.info(f"After is_processed=True filter, found {queryset.count()} articles")
         
         try:
             user_profile = UserProfile.objects.get(user=notification.user)
-            logger.debug(f"Found user profile for {notification.user.username}")
+            logger.info(f"Found user profile for {notification.user.username}")
             
             # Log user preferences
             if notification.include_categories.exists():
