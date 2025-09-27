@@ -191,7 +191,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         try:
             # Full-text search with ranking
             search_vector = SearchVector('title', weight='A') + \
-                            SearchVector('summary', weight='B') + \
+                            SearchVector('excerpt', weight='B') + \
                             SearchVector('content', weight='C')
 
             search_query = SearchQuery(query)
@@ -214,7 +214,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         for term in search_terms:
             term_q = (
                     Q(title__icontains=term) |
-                    Q(summary__icontains=term) |
+                    Q(excerpt__icontains=term) |
                     Q(content__icontains=term) |
                     Q(source__name__icontains=term) |
                     Q(category__name__icontains=term) |
