@@ -28,13 +28,15 @@ class ArticleSearchPagination(PageNumberPagination):
     max_page_size = 50
 
     def get_paginated_response(self, data):
+        current_page = self.page.number
+        total_pages = self.page.paginator.num_pages
         return Response({
             'count': self.page.paginator.count,
-            'next': self.get_next_link(),
-            'previous': self.get_previous_link(),
+            'next': current_page + 1 if self.page.has_next() else None,
+            'previous': current_page - 1 if self.page.has_previous() else None,
             'page_size': self.page_size,
-            'total_pages': self.page.paginator.num_pages,
-            'current_page': self.page.number,
+            'total_pages': total_pages,
+            'current_page': current_page,
             'results': data
         })
 # Views
