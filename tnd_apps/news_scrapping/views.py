@@ -237,29 +237,29 @@ class ArticleViewSet(viewsets.ModelViewSet):
         if sort_by == 'relevance':
             # If using PostgreSQL search with rank, sort by rank
             if hasattr(queryset.model, 'rank'):
-                return queryset.order_by('-rank', '-published_at')
+                return queryset.order_by('-rank', '-scraped_at')
             else:
                 # Fallback: prioritize title matches, then date
                 return queryset.extra(
                     select={
                         'title_match': f"CASE WHEN LOWER(title) LIKE LOWER('%%{query}%%') THEN 1 ELSE 0 END"
                     }
-                ).order_by('-title_match', '-published_at')
+                ).order_by('-title_match', '-scraped_at')
 
         elif sort_by == 'date_desc':
-            return queryset.order_by('-published_at')
+            return queryset.order_by('-scraped_at')
 
         elif sort_by == 'date_asc':
-            return queryset.order_by('published_at')
+            return queryset.order_by('scraped_at')
 
         elif sort_by == 'popularity':
             return queryset.annotate(
                 view_count=Count('views')
-            ).order_by('-view_count', '-published_at')
+            ).order_by('-view_count', '-scraped_at')
 
         else:
             # Default to date descending
-            return queryset.order_by('-published_at')
+            return queryset.order_by('-scraped_at')
 
     @action(detail=False, methods=['get'])
     def search_suggestions(self, request):
@@ -301,7 +301,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         })
     @action(detail=False, methods=['get'])
     def top_story(self, request):
-        queryset = self.get_queryset().filter(has_full_content=True).order_by('-published_at')[:1]
+        queryset = self.get_queryset().filter(has_full_content=True).order_by('-scraped_at')[:1]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -309,7 +309,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def featured(self, request):
         queryset = self.get_queryset().filter(has_full_content=True).annotate(
             view_count=Count('views')
-        ).order_by('-view_count', '-published_at')[:5]
+        ).order_by('-view_count', '-scraped_at')[:5]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -324,7 +324,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
-        queryset = self.get_queryset().order_by('-published_at')[:20]
+        queryset = self.get_queryset().order_by('-scraped_at')[:20]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
