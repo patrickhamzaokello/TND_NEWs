@@ -55,6 +55,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         profile, created = UserProfile.objects.get_or_create(user=request.user)
         profile.preferred_categories.remove(category)
         return Response({'status': 'unsubscribed'}, status=status.HTTP_200_OK)
+
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
@@ -106,6 +107,26 @@ class ArticleViewSet(viewsets.ModelViewSet):
         )
         serializer = ArticleViewSerializer(view)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
+
+    # ✅ Batch fetch endpoint
+    @action(detail=False, methods=['post'])
+    def batch(self, request):
+        """
+        POST /api/articles/batch/
+        {
+            "ids": [1, 2, 3, 4]
+        }
+        """
+        ids = request.data.get('ids', [])
+        if not isinstance(ids, list) or not ids:
+            return Response(
+                {"error": "A non-empty list of article IDs is required."},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        articles = self.get_queryset().filter(id__in=ids).distinct()
+        serializer = self.get_serializer(articles, many=True)
+        return Response(serializer.data, status=status.HTTP_200_OK)
 
     @action(detail=True, methods=['get'])
     def related(self, request, pk=None):
