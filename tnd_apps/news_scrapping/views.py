@@ -7,9 +7,13 @@ from rest_framework.permissions import IsAuthenticated
 from django.db.models import Count, Q
 from datetime import timedelta
 from django.utils import timezone
+from rest_framework.pagination import PageNumberPagination
+from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category
 from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleViewSerializer, UserProfileSerializer, \
     CommentSerializer, CategorySerializer
+from datetime import datetime, timedelta
+import re
 
 from .serializers import (
     PushTokenSerializer,
@@ -17,6 +21,22 @@ from .serializers import (
     TokenUpdateUsageSerializer
 )
 
+
+class ArticleSearchPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+    def get_paginated_response(self, data):
+        return Response({
+            'count': self.page.paginator.count,
+            'next': self.get_next_link(),
+            'previous': self.get_previous_link(),
+            'page_size': self.page_size,
+            'total_pages': self.page.paginator.num_pages,
+            'current_page': self.page.number,
+            'results': data
+        })
 # Views
 class NewsSourceViewSet(viewsets.ModelViewSet):
     queryset = NewsSource.objects.filter(is_active=True)
@@ -68,6 +88,217 @@ class ArticleViewSet(viewsets.ModelViewSet):
             return self.queryset.filter(source__in=profile.followed_sources.all())
         return self.queryset.filter(source__is_active=True)
 
+    @action(detail=False, methods=['get'])
+    def search(self, request):
+        """
+        Advanced search endpoint for articles with multiple search strategies.
+
+        GET /api/articles/search/?q=search_term&category=1&source=2&date_from=2024-01-01&date_to=2024-12-31&sort_by=relevance
+
+        Query Parameters:
+        - q: Search query (required)
+        - category: Filter by category ID
+        - source: Filter by news source ID
+        - date_from: Start date (YYYY-MM-DD)
+        - date_to: End date (YYYY-MM-DD)
+        - sort_by: Sort method (relevance, date_desc, date_asc, popularity)
+        - has_full_content: Filter articles with full content (true/false)
+        """
+        query = request.query_params.get('q', '').strip()
+
+        if not query:
+            return Response(
+                {'error': 'Search query (q) parameter is required'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        # Start with base queryset
+        queryset = self.get_queryset()
+
+        # Apply filters
+        queryset = self._apply_search_filters(queryset, request.query_params)
+
+        # Apply search
+        queryset = self._apply_search_query(queryset, query)
+
+        # Apply sorting
+        sort_by = request.query_params.get('sort_by', 'relevance')
+        queryset = self._apply_search_sorting(queryset, sort_by, query)
+
+        # Paginate results
+        page = self.paginate_queryset(queryset)
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    def _apply_search_filters(self, queryset, params):
+        """Apply additional filters to the search queryset."""
+
+        # Filter by category
+        category_id = params.get('category')
+        if category_id:
+            try:
+                queryset = queryset.filter(category_id=int(category_id))
+            except (ValueError, TypeError):
+                pass
+
+        # Filter by source
+        source_id = params.get('source')
+        if source_id:
+            try:
+                queryset = queryset.filter(source_id=int(source_id))
+            except (ValueError, TypeError):
+                pass
+
+        # Filter by date range
+        date_from = params.get('date_from')
+        date_to = params.get('date_to')
+
+        if date_from:
+            try:
+                from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
+                queryset = queryset.filter(published_at__date__gte=from_date)
+            except ValueError:
+                pass
+
+        if date_to:
+            try:
+                to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
+                queryset = queryset.filter(published_at__date__lte=to_date)
+            except ValueError:
+                pass
+
+        # Filter by full content availability
+        has_full_content = params.get('has_full_content')
+        if has_full_content and has_full_content.lower() == 'true':
+            queryset = queryset.filter(has_full_content=True)
+
+        return queryset
+
+    def _apply_search_query(self, queryset, query):
+        """
+        Apply search query using multiple strategies for better results.
+        This uses both PostgreSQL full-text search and Django Q objects for compatibility.
+        """
+
+        # Clean and prepare search terms
+        search_terms = self._prepare_search_terms(query)
+
+        # Try PostgreSQL full-text search if available
+        try:
+            # Full-text search with ranking
+            search_vector = SearchVector('title', weight='A') + \
+                            SearchVector('summary', weight='B') + \
+                            SearchVector('content', weight='C')
+
+            search_query = SearchQuery(query)
+
+            queryset = queryset.annotate(
+                search=search_vector,
+                rank=SearchRank(search_vector, search_query)
+            ).filter(search=search_query)
+
+            return queryset
+
+        except Exception:
+            # Fallback to basic search using Q objects
+            return self._basic_search(queryset, search_terms)
+
+    def _basic_search(self, queryset, search_terms):
+        """Fallback search method using Django Q objects."""
+        search_q = Q()
+
+        for term in search_terms:
+            term_q = (
+                    Q(title__icontains=term) |
+                    Q(summary__icontains=term) |
+                    Q(content__icontains=term) |
+                    Q(source__name__icontains=term) |
+                    Q(category__name__icontains=term) |
+                    Q(tags__name__icontains=term)
+            )
+            search_q |= term_q
+
+        return queryset.filter(search_q).distinct()
+
+    def _prepare_search_terms(self, query):
+        """Clean and prepare search terms."""
+        # Remove special characters and split into terms
+        clean_query = re.sub(r'[^\w\s]', ' ', query)
+        terms = [term.strip() for term in clean_query.split() if len(term.strip()) > 2]
+        return terms
+
+    def _apply_search_sorting(self, queryset, sort_by, query):
+        """Apply sorting to search results."""
+
+        if sort_by == 'relevance':
+            # If using PostgreSQL search with rank, sort by rank
+            if hasattr(queryset.model, 'rank'):
+                return queryset.order_by('-rank', '-published_at')
+            else:
+                # Fallback: prioritize title matches, then date
+                return queryset.extra(
+                    select={
+                        'title_match': f"CASE WHEN LOWER(title) LIKE LOWER('%%{query}%%') THEN 1 ELSE 0 END"
+                    }
+                ).order_by('-title_match', '-published_at')
+
+        elif sort_by == 'date_desc':
+            return queryset.order_by('-published_at')
+
+        elif sort_by == 'date_asc':
+            return queryset.order_by('published_at')
+
+        elif sort_by == 'popularity':
+            return queryset.annotate(
+                view_count=Count('views')
+            ).order_by('-view_count', '-published_at')
+
+        else:
+            # Default to date descending
+            return queryset.order_by('-published_at')
+
+    @action(detail=False, methods=['get'])
+    def search_suggestions(self, request):
+        """
+        Get search suggestions based on partial query.
+
+        GET /api/articles/search_suggestions/?q=partial_term&limit=10
+        """
+        query = request.query_params.get('q', '').strip()
+        limit = int(request.query_params.get('limit', 10))
+
+        if len(query) < 2:
+            return Response({'suggestions': []})
+
+        suggestions = []
+
+        # Get suggestions from article titles
+        title_suggestions = Article.objects.filter(
+            title__icontains=query
+        ).values_list('title', flat=True).distinct()[:limit // 2]
+
+        # Get suggestions from categories
+        category_suggestions = Category.objects.filter(
+            name__icontains=query
+        ).values_list('name', flat=True).distinct()[:limit // 4]
+
+        # Get suggestions from sources
+        source_suggestions = NewsSource.objects.filter(
+            name__icontains=query,
+            is_active=True
+        ).values_list('name', flat=True).distinct()[:limit // 4]
+
+        suggestions.extend(list(title_suggestions))
+        suggestions.extend(list(category_suggestions))
+        suggestions.extend(list(source_suggestions))
+
+        return Response({
+            'suggestions': suggestions[:limit]
+        })
     @action(detail=False, methods=['get'])
     def top_story(self, request):
         queryset = self.get_queryset().filter(has_full_content=True).order_by('-published_at')[:1]
