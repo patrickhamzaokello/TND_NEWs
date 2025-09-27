@@ -21,6 +21,23 @@ from .serializers import (
     TokenUpdateUsageSerializer
 )
 
+class CategoriesPagination(PageNumberPagination):
+    page_size = 30
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+    def get_paginated_response(self, data):
+        current_page = self.page.number
+        total_pages = self.page.paginator.num_pages
+        return Response({
+            'count': self.page.paginator.count,
+            'next': current_page + 1 if self.page.has_next() else None,
+            'previous': current_page - 1 if self.page.has_previous() else None,
+            'page_size': self.page_size,
+            'total_pages': total_pages,
+            'current_page': current_page,
+            'results': data
+        })
 
 class ArticleSearchPagination(PageNumberPagination):
     page_size = 10
@@ -63,6 +80,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = CategoriesPagination
 
     @action(detail=True, methods=['post'])
     def subscribe(self, request, pk=None):
