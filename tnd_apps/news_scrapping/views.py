@@ -82,6 +82,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
     permission_classes = [IsAuthenticated]
+    pagination_class = ArticleSearchPagination
 
     def get_queryset(self):
         user = self.request.user
