@@ -114,17 +114,17 @@ class ArticleViewSet(viewsets.ModelViewSet):
         """
         POST /api/articles/batch/
         {
-            "ids": [1, 2, 3, 4]
+            "article_ids": [1, 2, 3, 4]
         }
         """
-        ids = request.data.get('ids', [])
-        if not isinstance(ids, list) or not ids:
+        article_ids = request.data.get('article_ids', [])
+        if not isinstance(article_ids, list) or not article_ids:
             return Response(
                 {"error": "A non-empty list of article IDs is required."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        articles = self.get_queryset().filter(id__in=ids).distinct()
+        articles = self.get_queryset().filter(id__in=article_ids).distinct()
         serializer = self.get_serializer(articles, many=True)
         return Response(serializer.data, status=status.HTTP_200_OK)
 
