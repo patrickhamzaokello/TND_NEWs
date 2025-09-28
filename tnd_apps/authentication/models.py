@@ -37,7 +37,7 @@ AUTH_PROVIDERS = { 'facebook': 'facebook', 'google': 'google' , 'twitter': 'twit
 class User(AbstractBaseUser, PermissionsMixin):
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)  # Renamed from user_id to id
     username = models.CharField(max_length=255, unique=True, db_index=True)
-    name = models.CharField(max_length=255,blank=True, null=True)
+    name = models.CharField(max_length=255)
     email = models.EmailField(max_length=255, unique=True, db_index=True)
     phone = models.CharField(max_length=255,blank=True, null=True)
     bio = models.TextField(blank=True, null=True)
