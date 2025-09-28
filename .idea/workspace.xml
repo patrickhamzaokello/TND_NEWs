@@ -4,7 +4,11 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="" />
+    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/authentication/serializers.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/authentication/serializers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/authentication/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/authentication/views.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -119,7 +123,8 @@
       <workItem from="1758050358549" duration="2121000" />
       <workItem from="1758576146899" duration="4010000" />
       <workItem from="1758830048600" duration="6182000" />
-      <workItem from="1758987756134" duration="6370000" />
+      <workItem from="1758987756134" duration="8591000" />
+      <workItem from="1759053164317" duration="964000" />
     </task>
     <servers />
   </component>

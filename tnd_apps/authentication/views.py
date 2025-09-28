@@ -27,6 +27,7 @@ import os
 import random
 import string
 import logging
+import uuid
 
 logger = logging.getLogger(__name__)
 
@@ -47,6 +48,10 @@ class RegisterView(generics.GenericAPIView):
     def post(self, request):
         try:
             user_data = request.data
+            # Generate unique username
+            username = f"user_{uuid.uuid4().hex[:10]}"  # Generate unique username
+            user_data = {**user_data, 'username': username}
+
             serializer = self.serializer_class(data=user_data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
@@ -67,7 +72,7 @@ class RegisterView(generics.GenericAPIView):
             }, timeout=1800)  # 30 minutes
 
             # Prepare verification email with code
-            email_body = f'''Hello {user.username},
+            email_body = f'''Hello {user.name},
 
 Welcome to our platform! To complete your registration, please verify your email address.
 

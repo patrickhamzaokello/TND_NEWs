@@ -13,22 +13,20 @@ class RegisterSerializer(serializers.ModelSerializer):
         max_length=68, min_length=6, write_only=True
     )
     user_id = serializers.UUIDField(source='id', read_only=True)  # ✅ Map DB id → user_id
+    username = serializers.CharField(read_only=True)
 
-    default_error_messages = {
-        'username': 'The username should only contain alphanumeric characters'
-    }
 
     class Meta:
         model = User
-        fields = ['email', 'username', 'password', 'user_id']  # ✅ use user_id in API
-        read_only_fields = ['user_id']
+        fields = ['email', 'name', 'password', 'user_id', 'username']  # ✅ use user_id in API
+        read_only_fields = ['user_id','username']
 
     def validate(self, attrs):
         email = attrs.get('email', '')
-        username = attrs.get('username', '')
+        name = attrs.get('name', '')
 
-        if not username.isalnum():
-            raise serializers.ValidationError(self.default_error_messages)
+        if not name:
+            raise serializers.ValidationError({'name': 'Name is required'})
         return attrs
 
     def create(self, validated_data):
