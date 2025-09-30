@@ -75,6 +75,7 @@ class LoginSerializer(serializers.ModelSerializer):
     class Meta:
         model = User
         fields = ['email','name', 'password', 'username', 'user_id', 'tokens']
+        read_only_fields = ['name', 'username', 'user_id', 'tokens']
 
     def get_tokens(self, obj):
         # obj is the User instance
