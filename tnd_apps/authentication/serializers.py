@@ -9,28 +9,32 @@ from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
 
 class RegisterSerializer(serializers.ModelSerializer):
-    password = serializers.CharField(
-        max_length=68, min_length=6, write_only=True
-    )
-    user_id = serializers.UUIDField(source='id', read_only=True)  # ✅ Map DB id → user_id
+    password = serializers.CharField(max_length=68, min_length=6, write_only=True)
+    user_id = serializers.UUIDField(source='id', read_only=True)  # Map DB id → user_id
     username = serializers.CharField(read_only=True)
-
 
     class Meta:
         model = User
-        fields = ['email', 'name', 'password', 'user_id', 'username']  # ✅ use user_id in API
-        read_only_fields = ['user_id','username']
+        fields = ['email', 'name', 'password', 'user_id', 'username']
+        read_only_fields = ['user_id', 'username']
 
     def validate(self, attrs):
-        email = attrs.get('email', '')
+        email = attrs.get('email', '').lower()
         name = attrs.get('name', '')
 
         if not name:
             raise serializers.ValidationError({'name': 'Name is required'})
+        if not email:
+            raise serializers.ValidationError({'email': 'Email is required'})
         return attrs
 
     def create(self, validated_data):
-        return User.objects.create_user(**validated_data)
+        # Only pass required fields to create_user
+        return User.objects.create_user(
+            name=validated_data['name'],
+            email=validated_data['email'],
+            password=validated_data['password']
+        )
 
 class EmailVerificationSerializer(serializers.Serializer):
     email = serializers.EmailField()
@@ -63,25 +67,21 @@ class ResendVerificationCodeSerializer(serializers.Serializer):
 
 class LoginSerializer(serializers.ModelSerializer):
     email = serializers.EmailField(max_length=255, min_length=3)
-    password = serializers.CharField(
-        max_length=68, min_length=6, write_only=True
-    )
+    password = serializers.CharField(max_length=68, min_length=6, write_only=True)
     username = serializers.CharField(read_only=True)
-    user_id = serializers.UUIDField(read_only=True)  # ✅ custom field name
+    user_id = serializers.UUIDField(read_only=True)
     tokens = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['email', 'password', 'username', 'user_id', 'tokens']
+        fields = ['email','name', 'password', 'username', 'user_id', 'tokens']
 
     def get_tokens(self, obj):
-        user = self.context.get('user')
-        if not user:
-            return {}
-        return user.tokens()
+        # obj is the User instance
+        return obj.tokens()
 
     def validate(self, attrs):
-        email = attrs.get('email', '')
+        email = attrs.get('email', '').lower()
         password = attrs.get('password', '')
 
         # Check auth provider
@@ -100,13 +100,11 @@ class LoginSerializer(serializers.ModelSerializer):
         if not user.is_verified:
             raise AuthenticationFailed('Email is not verified')
 
-        # Pass user to context for get_tokens()
-        self.context['user'] = user
-
         return {
             'email': user.email,
+            'name': user.name,
             'username': user.username,
-            'user_id': user.id,  # ✅ now matches serializer field
+            'user_id': user.id,
             'tokens': user.tokens()
         }
 

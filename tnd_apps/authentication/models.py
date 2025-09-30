@@ -7,29 +7,51 @@ from django.contrib.auth.models import (
 from django.db import models
 from rest_framework_simplejwt.tokens import RefreshToken
 import uuid
+import re
 
 
 class UserManager(BaseUserManager):
 
-    def create_user(self, username, email, password=None):
-        if username is None:
-            raise TypeError('Users should have a username')
-        if email is None:
-            raise TypeError('Users should have a Email')
+    def _generate_username(self, name, email):
+        """
+        Generate a unique username based on the user's name or email.
+        """
+        # Clean the name to remove special characters and spaces
+        base = re.sub(r'[^a-zA-Z0-9]', '', name.lower().replace(' ', '')) or email.split('@')[0].lower()
+        username = base[:50]  # Limit length
+        # Ensure uniqueness by appending a number if necessary
+        counter = 1
+        while self.model.objects.filter(username=username).exists():
+            username = f"{base}{counter}"
+            counter += 1
+        return username
 
-        user = self.model(username=username, email=self.normalize_email(email))
+    def create_user(self, name, email, password=None):
+        if not email:
+            raise TypeError('Users should have an email')
+        if not name:
+            raise TypeError('Users should have a name')
+
+        # Generate a unique username
+        username = self._generate_username(name, email)
+
+        user = self.model(
+            username=username,
+            email=self.normalize_email(email),
+            name=name
+        )
         user.set_password(password)
-        user.save()
+        user.save(using=self._db)
         return user
 
-    def create_superuser(self, username, email, password=None):
-        if password is None:
+    def create_superuser(self, name, email, password=None):
+        if not password:
             raise TypeError('Password should not be none')
 
-        user = self.create_user(username, email, password)
+        user = self.create_user(name, email, password)
         user.is_superuser = True
         user.is_staff = True
-        user.save()
+        user.save(using=self._db)
         return user
 
 AUTH_PROVIDERS = { 'facebook': 'facebook', 'google': 'google' , 'twitter': 'twitter' , 'email': 'email', 'apple': 'apple' }

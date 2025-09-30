@@ -47,12 +47,7 @@ class RegisterView(generics.GenericAPIView):
 
     def post(self, request):
         try:
-            user_data = request.data
-            # Generate unique username
-            username = f"user_{uuid.uuid4().hex[:10]}"  # Generate unique username
-            user_data = {**user_data, 'username': username}
-
-            serializer = self.serializer_class(data=user_data)
+            serializer = self.serializer_class(data=request.data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
 
@@ -62,7 +57,7 @@ class RegisterView(generics.GenericAPIView):
             # Generate 6-digit verification code
             verification_code = generate_token_code()
 
-            # Store the code in cache with 30-minute expiry (longer for email verification)
+            # Store the code in cache with 30-minute expiry
             cache_key = f"email_verification_{user.pk}"
             cache.set(cache_key, {
                 'code': verification_code,
@@ -97,7 +92,6 @@ AEACBIO TEAM'''
 
             if not email_sent:
                 logger.warning(f"Failed to send verification email to {user.email}")
-                # Clean up cache if email failed
                 cache.delete(cache_key)
                 return Response(
                     {'error': 'Failed to send verification code. Please try again.'},
@@ -115,9 +109,9 @@ AEACBIO TEAM'''
             return Response(response_data, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"Error in user registration: {str(e)}")
+            logger.error(f"Error in user registration: {str(e)}", exc_info=True)
             return Response(
-                {'error': 'Registration failed. Please try again.'},
+                {'error': f'Registration failed: {str(e)}'},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
