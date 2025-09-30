@@ -78,8 +78,10 @@ class LoginSerializer(serializers.ModelSerializer):
         read_only_fields = ['name', 'username', 'user_id', 'tokens']
 
     def get_tokens(self, obj):
-        # obj is the User instance
-        return obj.tokens()
+        user = self.context.get('user')
+        if not user:
+            return {}
+        return user.tokens()
 
     def validate(self, attrs):
         email = attrs.get('email', '').lower()
