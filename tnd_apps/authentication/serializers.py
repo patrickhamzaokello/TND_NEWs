@@ -70,18 +70,17 @@ class LoginSerializer(serializers.ModelSerializer):
     password = serializers.CharField(max_length=68, min_length=6, write_only=True)
     username = serializers.CharField(read_only=True)
     user_id = serializers.UUIDField(read_only=True)
+    name = serializers.CharField(read_only=True)  # Ensure name is read-only
     tokens = serializers.SerializerMethodField()
 
     class Meta:
         model = User
-        fields = ['email','name', 'password', 'username', 'user_id', 'tokens']
+        fields = ['email', 'name', 'password', 'username', 'user_id', 'tokens']
         read_only_fields = ['name', 'username', 'user_id', 'tokens']
 
     def get_tokens(self, obj):
-        user = self.context.get('user')
-        if not user:
-            return {}
-        return user.tokens()
+        # obj is the User instance (passed by the serializer)
+        return obj.tokens()
 
     def validate(self, attrs):
         email = attrs.get('email', '').lower()
@@ -103,14 +102,11 @@ class LoginSerializer(serializers.ModelSerializer):
         if not user.is_verified:
             raise AuthenticationFailed('Email is not verified')
 
-        return {
-            'email': user.email,
-            'name': user.name,
-            'username': user.username,
-            'user_id': user.id,
-            'tokens': user.tokens()
-        }
+        # Set user in context for get_tokens
+        self.context['user'] = user
 
+        # Return validated attributes
+        return attrs
 
 class ResetPasswordEmailRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(min_length=2)
