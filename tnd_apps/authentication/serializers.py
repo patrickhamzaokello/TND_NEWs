@@ -79,8 +79,11 @@ class LoginSerializer(serializers.ModelSerializer):
         read_only_fields = ['name', 'username', 'user_id', 'tokens']
 
     def get_tokens(self, obj):
-        # obj is the User instance
-        return obj.tokens()  # Call tokens() on the User instance
+        # Use the user from context
+        user = self.context.get('user')
+        if not user:
+            raise serializers.ValidationError("User not found in context")
+        return user.tokens()
 
     def validate(self, attrs):
         email = attrs.get('email', '').lower()
@@ -102,7 +105,7 @@ class LoginSerializer(serializers.ModelSerializer):
         if not user.is_verified:
             raise AuthenticationFailed('Email is not verified')
 
-        # Store user in context for serializer
+        # Store user in context for get_tokens
         self.context['user'] = user
 
         # Return validated input attributes
