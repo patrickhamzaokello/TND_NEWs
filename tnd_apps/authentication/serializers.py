@@ -111,6 +111,19 @@ class LoginSerializer(serializers.ModelSerializer):
         # Return validated input attributes
         return attrs
 
+    def to_representation(self, instance):
+        # instance is the validated attrs (email, password), but we use self.context['user']
+        user = self.context.get('user')
+        if not user:
+            raise serializers.ValidationError("User not found in context")
+        return {
+            'email': user.email,
+            'name': user.name,
+            'username': user.username,
+            'user_id': user.id,
+            'tokens': self.get_tokens(user)
+        }
+
 class ResetPasswordEmailRequestSerializer(serializers.Serializer):
     email = serializers.EmailField(min_length=2)
 
