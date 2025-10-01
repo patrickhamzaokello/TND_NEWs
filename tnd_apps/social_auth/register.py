@@ -4,50 +4,47 @@ import random
 from rest_framework.exceptions import AuthenticationFailed
 from django.conf import settings
 
-def generate_username(name):
-
-    username = "".join(name.split(' ')).lower()
-    if not User.objects.filter(username=username).exists():
-        return username
-    else:
-        random_username = username + str(random.randint(0, 1000))
-        return generate_username(random_username)
 
 
 def register_social_user(provider, user_id, email, name):
-    filtered_user_by_email = User.objects.filter(email=email)
+    """
+    Register or retrieve a user for social authentication.
+    Returns user data with tokens.
+    """
+    # Check if user exists with the given email and provider
+    existing_user = User.objects.filter(email=email, auth_provider=provider).first()
 
-    if filtered_user_by_email.exists():
+    if existing_user:
+        if not existing_user.is_active:
+            raise AuthenticationFailed('Account disabled, contact admin')
+        if not existing_user.is_verified:
+            raise AuthenticationFailed('Email is not verified')
+        # Generate tokens for existing user
+        return {
+            'email': existing_user.email,
+            'name': existing_user.name,
+            'username': existing_user.username,
+            'user_id': existing_user.id,
+            'tokens': existing_user.tokens()
+        }
 
-        if provider == filtered_user_by_email[0].auth_provider:
-
-            registered_user = authenticate(
-                email=email, password=settings.SOCIAL_SECRET)
-
-            return {
-                'username': registered_user.username,
-                'email': registered_user.email,
-                'user_id': registered_user.id,  # Added user_id
-                'tokens': registered_user.tokens()}
-
-        else:
-            raise AuthenticationFailed(
-                detail='Please continue your login using ' + filtered_user_by_email[0].auth_provider)
-
-    else:
-        user = {
-            'username': generate_username(name), 'email': email,
-            'password': settings.SOCIAL_SECRET}
-        user = User.objects.create_user(**user)
-        user.is_verified = True
+    # Create new user
+    try:
+        user = User.objects.create_user(
+            name=name,
+            email=email,
+            password=None  # Social users don't need a password
+        )
         user.auth_provider = provider
+        user.is_verified = True  # Social auth typically verifies email
         user.save()
 
-        new_user = authenticate(
-            email=email, password=settings.SOCIAL_SECRET)
         return {
-            'email': new_user.email,
-            'username': new_user.username,
-            'user_id': new_user.id,  # Added user_id
-            'tokens': new_user.tokens()
+            'email': user.email,
+            'name': user.name,
+            'username': user.username,
+            'user_id': user.id,
+            'tokens': user.tokens()
         }
+    except Exception as e:
+        raise AuthenticationFailed(f"Failed to create user: {str(e)}")

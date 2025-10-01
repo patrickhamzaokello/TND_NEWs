@@ -40,7 +40,8 @@ class UserManager(BaseUserManager):
             email=self.normalize_email(email),
             name=name
         )
-        user.set_password(password)
+        if password:
+            user.set_password(password)
         user.save(using=self._db)
         return user
 
