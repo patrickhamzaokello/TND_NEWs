@@ -23,7 +23,7 @@ services:
     container_name: tnd_postgres_container
     restart: unless-stopped
     ports:
-      - '5432:5432'
+      - '127.0.0.1:5432:5432'  # ← CHANGED: Only accessible from localhost
     networks:
       - tnd_network
     environment:
@@ -106,7 +106,7 @@ services:
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"
+      - "127.0.0.1:6379:6379"  # ← CHANGED: Also secure Redis
     networks:
       - tnd_network
     volumes:
@@ -137,7 +137,7 @@ services:
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
-      - ./logs:/app/logs  # If you need log access
+      - ./logs:/app/logs
     depends_on:
       - postgres_db
       - redis
@@ -145,6 +145,8 @@ services:
     networks:
       - tnd_network
       - shared-pk-network
+    env_file:
+      - .env
 
   flower:
     image: tnd_backend_image
@@ -152,12 +154,14 @@ services:
     restart: unless-stopped
     command: celery -A TNDNEWS flower --basic_auth=admin:password123
     ports:
-      - "5555:5555"
+      - "127.0.0.1:5555:5555"  # ← CHANGED: Secure Flower too
     depends_on:
       redis:
         condition: service_healthy
     networks:
       - tnd_network
+    env_file:
+      - .env
 
   beat:
     image: tnd_backend_image
@@ -167,7 +171,7 @@ services:
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
-      - ./logs:/app/logs  # If you need log access
+      - ./logs:/app/logs
     networks:
       - tnd_network
       - shared-pk-network
@@ -176,3 +180,5 @@ services:
         condition: service_healthy
       tnd_backend_app:
         condition: service_healthy
+    env_file:
+      - .env
