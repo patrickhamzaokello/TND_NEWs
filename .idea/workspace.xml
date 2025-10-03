@@ -5,7 +5,7 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/tnd_apps/tndvideo/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/tndvideo/views.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/tndvideo/management/commands/video_cleanup.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -129,7 +129,7 @@
       <workItem from="1758987756134" duration="8591000" />
       <workItem from="1759053164317" duration="2119000" />
       <workItem from="1759257962891" duration="6360000" />
-      <workItem from="1759433925116" duration="12198000" />
+      <workItem from="1759433925116" duration="12534000" />
     </task>
     <servers />
   </component>

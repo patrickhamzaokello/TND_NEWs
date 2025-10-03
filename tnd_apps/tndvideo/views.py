@@ -17,8 +17,8 @@ import logging
 
 from .models import Video, VideoProcessingQueue, VideoQuality, VideoView, Category
 from .serializers import (
-    VideoSerializer, VideoQualitySerializer, VideoUploadSerializer,
-    VideoViewTrackingSerializer
+    VideoSerializer, VideoListSerializer, VideoQualitySerializer,
+    VideoUploadSerializer, VideoViewTrackingSerializer
 )
 from .tasks import process_video_task
 
