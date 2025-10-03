@@ -7,16 +7,9 @@ from django.contrib.auth import get_user_model
 
 from .models import Video, VideoQuality, VideoView, Category
 from .utils import validate_video_file
+from ..news_scrapping.serializers import CategorySerializer
 
 User = get_user_model()
-
-
-class CategorySerializer(serializers.ModelSerializer):
-    """Serializer for Category model"""
-
-    class Meta:
-        model = Category
-        fields = ['id', 'name', 'slug']
 
 
 class VideoQualitySerializer(serializers.ModelSerializer):

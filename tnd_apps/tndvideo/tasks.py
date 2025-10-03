@@ -491,7 +491,7 @@ def cleanup_old_processing_tasks():
 @shared_task
 def cleanup_failed_uploads_task():
     """Celery task wrapper for cleanup function"""
-    from .views import cleanup_failed_uploads
+    from .utils import cleanup_failed_uploads
     return cleanup_failed_uploads()
 
 @shared_task
