@@ -31,21 +31,12 @@ class VideoQualitySerializer(serializers.ModelSerializer):
         return None
 
 
-class UserSerializer(serializers.ModelSerializer):
-    """Basic user serializer for video responses"""
-
-    class Meta:
-        model = User
-        fields = ['user_id', 'username', 'email', 'name']
-        read_only_fields = fields
-
-
 class VideoListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for video lists"""
 
     thumbnail_url = serializers.SerializerMethodField()
     duration_formatted = serializers.SerializerMethodField()
-    uploaded_by = UserSerializer(read_only=True)
+    uploaded_by = User(read_only=True)
     category = CategorySerializer(read_only=True)
 
     class Meta:
