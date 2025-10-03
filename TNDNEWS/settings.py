@@ -146,6 +146,7 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 CELERY_TASK_ROUTES = {
     'news_scrapping.tasks.*': {'queue': 'news_scraping'},
     'tndvideo.tasks.process_video_task': {'queue': 'video_processing'},
+    'tndvideo.tasks.process_queued_videos': {'queue': 'process_queued_videos'},
     'tndvideo.tasks.cleanup_*': {'queue': 'maintenance'},
 }
 
