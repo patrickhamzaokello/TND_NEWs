@@ -68,7 +68,6 @@ class VideoSerializer(serializers.ModelSerializer):
     duration_formatted = serializers.SerializerMethodField()
     stream_url = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
-    uploaded_by = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
 
     class Meta:
@@ -240,7 +239,6 @@ class VideoProcessingStatusSerializer(serializers.Serializer):
 class VideoViewSerializer(serializers.ModelSerializer):
     """Serializer for VideoView model"""
 
-    user = UserSerializer(read_only=True)
     video_title = serializers.CharField(source='video.title', read_only=True)
 
     class Meta:
