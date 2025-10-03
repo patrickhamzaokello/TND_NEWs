@@ -31,12 +31,21 @@ class VideoQualitySerializer(serializers.ModelSerializer):
         return None
 
 
+class UserSerializer(serializers.ModelSerializer):
+    """Basic user serializer for video responses"""
+
+    class Meta:
+        model = User
+        fields = ['id', 'username', 'email', 'name']
+        read_only_fields = fields
+
+
 class VideoListSerializer(serializers.ModelSerializer):
     """Lightweight serializer for video lists"""
 
     thumbnail_url = serializers.SerializerMethodField()
     duration_formatted = serializers.SerializerMethodField()
-    uploaded_by = User(read_only=True)
+    uploaded_by = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
 
     class Meta:
@@ -68,6 +77,7 @@ class VideoSerializer(serializers.ModelSerializer):
     duration_formatted = serializers.SerializerMethodField()
     stream_url = serializers.SerializerMethodField()
     thumbnail_url = serializers.SerializerMethodField()
+    uploaded_by = UserSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
 
     class Meta:
@@ -239,6 +249,7 @@ class VideoProcessingStatusSerializer(serializers.Serializer):
 class VideoViewSerializer(serializers.ModelSerializer):
     """Serializer for VideoView model"""
 
+    user = UserSerializer(read_only=True)
     video_title = serializers.CharField(source='video.title', read_only=True)
 
     class Meta:
