@@ -15,6 +15,7 @@ RUN apt-get update && apt-get install -y \
     libpq-dev \
     chromium \
     chromium-driver \
+    ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
 # Replace opencv-python with headless version
