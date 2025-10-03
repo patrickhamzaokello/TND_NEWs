@@ -62,6 +62,7 @@ LOCAL_APPS = [
     'tnd_apps.authentication',
     'tnd_apps.social_auth',
     'tnd_apps.news_scrapping',
+    'tnd_apps.tndvideo'
 ]
 
 
@@ -132,6 +133,9 @@ CELERY_RESULT_BACKEND = f"redis://:{config('REDIS_PASSWORD')}@redis:6379/2"
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
 CELERY_ACCEPT_CONTENT = ['json']
+CELERy_TASK_TIME_LIMIT = 7200,  # 2 hours max per task
+CELERY_TASK_STARTED = True
+CELERY_SOFT_TIME_LIMIT = 6900,  # Soft limit at 1h 55m
 CELERY_TIMEZONE = 'UTC'
 CELERY_ENABLE_UTC = True
 
@@ -141,6 +145,8 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 # Task routing
 CELERY_TASK_ROUTES = {
     'news_scrapping.tasks.*': {'queue': 'news_scraping'},
+    'tndvideo.tasks.process_video_task': {'queue': 'video_processing'},
+    'tndvideo.tasks.cleanup_*': {'queue': 'maintenance'},
 }
 
 # Task time limits (30 minutes for scraping tasks)
@@ -225,6 +231,12 @@ STATIC_ROOT =  BASE_DIR / 'staticfiles'
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
+
+# Video processing settings
+VIDEO_UPLOAD_MAX_SIZE = 2 * 1024 * 1024 * 1024  # 2GB
+VIDEO_ALLOWED_EXTENSIONS = ['.mp4', '.mov', '.avi', '.mkv', '.webm']
+VIDEO_SEGMENT_DURATION = 4  # seconds
+
 
 STORAGES = {
     "default": {

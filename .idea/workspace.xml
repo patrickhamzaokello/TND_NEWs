@@ -4,7 +4,15 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="" />
+    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
+      <change afterPath="$PROJECT_DIR$/tnd_apps/tndvideo/tasks.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/tndvideo/urls.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/TNDNEWS/celery.py" beforeDir="false" afterPath="$PROJECT_DIR$/TNDNEWS/celery.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/TNDNEWS/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/TNDNEWS/settings.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/TNDNEWS/urls.py" beforeDir="false" afterPath="$PROJECT_DIR$/TNDNEWS/urls.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/requirements.txt" beforeDir="false" afterPath="$PROJECT_DIR$/requirements.txt" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -59,6 +67,11 @@
     &quot;vue.rearranger.settings.migration&quot;: &quot;true&quot;
   }
 }</component>
+  <component name="RecentsManager">
+    <key name="MoveFile.RECENT_KEYS">
+      <recent name="C:\Users\pkase\PycharmProjects\TNDNEWS\tnd_apps" />
+    </key>
+  </component>
   <component name="RunManager">
     <configuration name="TNDNEWS" type="Python.DjangoServer" factoryName="Django server">
       <module name="TNDNEWS" />
@@ -122,6 +135,7 @@
       <workItem from="1758987756134" duration="8591000" />
       <workItem from="1759053164317" duration="2119000" />
       <workItem from="1759257962891" duration="6360000" />
+      <workItem from="1759433925116" duration="4398000" />
     </task>
     <servers />
   </component>

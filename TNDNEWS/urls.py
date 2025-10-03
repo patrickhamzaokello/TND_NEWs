@@ -19,9 +19,10 @@ schema_view = get_schema_view(
         license=openapi.License(name="Test License"),
     ),
     public=True,
-    permission_classes=[permissions.AllowAny,],
+    permission_classes=[permissions.AllowAny, ],
     authentication_classes=[]
 )
+
 
 def health_check(request):
     try:
@@ -31,9 +32,11 @@ def health_check(request):
         return JsonResponse({"status": "healthy"}, status=200)
     except Exception as e:
         return JsonResponse({"status": "unhealthy", "error": str(e)}, status=500)
+
+
 urlpatterns = [
     path('admin/', admin.site.urls),
-    #local apps
+    # local apps
     path('auth/', include('tnd_apps.authentication.urls')),
     path('social_auth/', include(('tnd_apps.social_auth.urls', 'social_auth'), namespace="social_auth")),
 
@@ -41,18 +44,14 @@ urlpatterns = [
 
     path('health/', health_check, name='health_check'),
 
-
-
-
+    path('videos/', include('tnd_apps.tndvideo.urls')),
 
     # Swagger endpoints
     path('', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('api/api.json/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 
-
 ]
-
 
 if settings.DEBUG:
     urlpatterns += static(settings.MEDIA_URL, document_root=settings.MEDIA_ROOT)

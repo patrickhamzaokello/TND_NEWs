@@ -15,6 +15,18 @@ celery_app.conf.beat_schedule = {
         'task': 'news_scrapping.tasks.send_scheduled_notifications',
         'schedule': crontab(minute='*/15'),  # Every 15 minutes
     },
+    'process-queued-videos': {
+        'task': 'tndvideo.tasks.process_queued_videos',
+        'schedule': crontab(minute='*/5'),  # Every 5 minutes
+    },
+    'cleanup-old-processing-tasks': {
+        'task': 'tndvideo.tasks.cleanup_old_processing_tasks',
+        'schedule': crontab(hour='*/1'),  # Every hour
+    },
+    'cleanup-failed-uploads': {
+        'task': 'tndvideo.tasks.cleanup_failed_uploads_task',
+        'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
+    },
 }
 
 # Celery beat schedule for periodic tasks
