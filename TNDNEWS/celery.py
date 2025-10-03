@@ -27,10 +27,6 @@ celery_app.conf.beat_schedule = {
         'task': 'tndvideo.tasks.cleanup_failed_uploads_task',
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
     },
-}
-
-# Celery beat schedule for periodic tasks
-celery_app.conf.beat_schedule = {
     'cleanup-failed-tasks': {
         'task': 'news_scrapping.tasks.check_for_news',
         'schedule': 300.0,  # Run every 5 minutes
