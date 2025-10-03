@@ -1,129 +1,250 @@
 """
-Video upload views and helper functions
+Refactored video upload views using class-based views
 """
 
-from rest_framework import viewsets, status
+from rest_framework import viewsets, status, generics, views
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.core.exceptions import ValidationError
+from rest_framework.permissions import IsAuthenticated, IsAuthenticatedOrReadOnly
+from rest_framework.pagination import PageNumberPagination
 from django.utils import timezone
-
-from . import models
-from .models import Video, VideoProcessingQueue, VideoQuality
-from .tasks import process_video_task
+from django.db.models import Q, Sum, Avg, Count
+from django.shortcuts import get_object_or_404
+from pathlib import Path
+from django.conf import settings
+import shutil
 import logging
+
+from .models import Video, VideoProcessingQueue, VideoQuality, VideoView, Category
+from .serializers import (
+    VideoSerializer, VideoQualitySerializer, VideoUploadSerializer,
+    VideoViewTrackingSerializer
+)
+from .tasks import process_video_task
 
 logger = logging.getLogger(__name__)
 
 
-class VideoViewSet(viewsets.ModelViewSet):
-    """ViewSet for video management"""
+# ===========================
+# Pagination Classes
+# ===========================
 
-    permission_classes = [IsAuthenticated]
+class StandardResultsSetPagination(PageNumberPagination):
+    """Standard pagination for most list views"""
+    page_size = 20
+    page_size_query_param = 'page_size'
+    max_page_size = 100
+
+
+class LargeResultsSetPagination(PageNumberPagination):
+    """Pagination for larger datasets"""
+    page_size = 50
+    page_size_query_param = 'page_size'
+    max_page_size = 200
+
+
+# ===========================
+# Video ViewSet
+# ===========================
+
+class VideoViewSet(viewsets.ModelViewSet):
+    """
+    ViewSet for video management with full CRUD operations
+
+    list: GET /api/videos/
+    retrieve: GET /api/videos/{id}/
+    create: POST /api/videos/
+    update: PUT /api/videos/{id}/
+    partial_update: PATCH /api/videos/{id}/
+    destroy: DELETE /api/videos/{id}/
+    """
+
+    serializer_class = VideoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = StandardResultsSetPagination
+    lookup_field = 'id'
 
     def get_queryset(self):
-        """Filter videos based on user permissions"""
+        """Filter videos based on user permissions and query params"""
+        queryset = Video.objects.select_related('category', 'uploaded_by').prefetch_related('qualities')
+
+        # Staff can see all videos
         if self.request.user.is_staff:
-            return Video.objects.all()
-        return Video.objects.filter(is_active=True, status='ready')
+            pass
+        # Authenticated users see active and their own videos
+        elif self.request.user.is_authenticated:
+            queryset = queryset.filter(
+                Q(is_active=True, status='ready') | Q(uploaded_by=self.request.user)
+            )
+        # Anonymous users only see ready videos
+        else:
+            queryset = queryset.filter(is_active=True, status='ready')
 
-    @action(detail=False, methods=['post'])
-    def upload(self, request):
-        """
-        Handle video upload and queue for processing
+        # Filter by status
+        status_filter = self.request.query_params.get('status')
+        if status_filter:
+            queryset = queryset.filter(status=status_filter)
 
-        POST /api/videos/upload/
-        {
-            "title": "Video Title",
-            "description": "Description",
-            "category_id": 5,   # optional
-            "video_file": <file>
-        }
-        """
+        # Filter by category
+        category_id = self.request.query_params.get('category')
+        if category_id:
+            queryset = queryset.filter(category_id=category_id)
+
+        # Filter by featured
+        is_featured = self.request.query_params.get('featured')
+        if is_featured and is_featured.lower() == 'true':
+            queryset = queryset.filter(is_featured=True)
+
+        # Search by title
+        search = self.request.query_params.get('search')
+        if search:
+            queryset = queryset.filter(
+                Q(title__icontains=search) | Q(description__icontains=search)
+            )
+
+        # Order by
+        order_by = self.request.query_params.get('order_by', '-created_at')
+        queryset = queryset.order_by(order_by)
+
+        return queryset
+
+    def get_serializer_context(self):
+        """Add request to serializer context"""
+        context = super().get_serializer_context()
+        context['request'] = self.request
+        return context
+
+    def perform_destroy(self, instance):
+        """Soft delete video"""
+        instance.is_active = False
+        instance.save(update_fields=['is_active'])
+
+
+# ===========================
+# Video Upload View
+# ===========================
+
+class VideoUploadView(generics.CreateAPIView):
+    """
+    Handle video upload and queue for processing
+
+    POST /api/videos/upload/
+    Body (multipart/form-data):
+    {
+        "title": "Video Title",
+        "description": "Description",
+        "category_id": 5,
+        "video_file": <file>,
+        "priority": "normal"
+    }
+    """
+
+    serializer_class = VideoUploadSerializer
+    permission_classes = [IsAuthenticated]
+
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
         try:
-            # Validate file
-            video_file = request.FILES.get('video_file')
-            if not video_file:
-                return Response(
-                    {'error': 'No video file provided'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
+            video = self._create_video(serializer.validated_data)
+            self._queue_for_processing(video, serializer.validated_data.get('priority', 'normal'))
 
-            # Validate file size (e.g., max 2GB)
-            max_size = 2 * 1024 * 1024 * 1024  # 2GB in bytes
-            if video_file.size > max_size:
-                return Response(
-                    {'error': f'File too large. Maximum size is 2GB'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # Validate file type
-            allowed_types = ['video/mp4', 'video/mpeg', 'video/quicktime', 'video/x-msvideo']
-            if video_file.content_type not in allowed_types:
-                return Response(
-                    {'error': f'Invalid file type. Allowed: MP4, MPEG, MOV, AVI'},
-                    status=status.HTTP_400_BAD_REQUEST
-                )
-
-            # Create video record
-            video = Video.objects.create(
-                title=request.data.get('title', video_file.name),
-                description=request.data.get('description', ''),
-                original_file=video_file,
-                original_filename=video_file.name,
-                uploaded_by=request.user,
-                status='uploaded'
-            )
-
-
-            # Link to category if provided
-            category_id = request.data.get('category_id')
-            if category_id:
-                from .models import Category
-                try:
-                    category = Category.objects.get(id=category_id)
-                    video.category = category
-                    video.save(update_fields=['category'])
-                except Category.DoesNotExist:
-                    pass
-
-            # Queue for processing
-            priority = request.data.get('priority', 'normal')
-            queue_task = VideoProcessingQueue.objects.create(
-                video=video,
-                priority=priority,
-                status='queued'
-            )
-
-            # Trigger processing task
-            process_video_task.delay(str(video.id))
-
-            logger.info(f"Video {video.id} uploaded and queued for processing")
+            response_serializer = VideoSerializer(video, context={'request': request})
 
             return Response({
-                'id': str(video.id),
-                'title': video.title,
-                'status': video.status,
-                'queue_position': self._get_queue_position(queue_task),
-                'message': 'Video uploaded successfully and queued for processing'
+                'video': response_serializer.data,
+                'message': 'Video uploaded successfully and queued for processing',
+                'queue_position': self._get_queue_position(video)
             }, status=status.HTTP_201_CREATED)
 
         except Exception as e:
-            logger.error(f"Error uploading video: {str(e)}")
+            logger.error(f"Error uploading video: {str(e)}", exc_info=True)
             return Response(
-                {'error': 'Failed to upload video'},
+                {'error': 'Failed to upload video', 'detail': str(e)},
                 status=status.HTTP_500_INTERNAL_SERVER_ERROR
             )
 
-    @action(detail=True, methods=['get'])
-    def processing_status(self, request, pk=None):
-        """
-        Get video processing status
+    def _create_video(self, validated_data):
+        """Create video instance"""
+        video_file = validated_data['video_file']
 
-        GET /api/videos/{id}/processing_status/
-        """
+        video = Video.objects.create(
+            title=validated_data['title'],
+            description=validated_data.get('description', ''),
+            original_file=video_file,
+            original_filename=video_file.name,
+            uploaded_by=self.request.user,
+            status='uploaded'
+        )
+
+        # Link category if provided
+        category_id = validated_data.get('category_id')
+        if category_id:
+            try:
+                category = Category.objects.get(id=category_id)
+                video.category = category
+                video.save(update_fields=['category'])
+            except Category.DoesNotExist:
+                logger.warning(f"Category {category_id} not found")
+
+        return video
+
+    def _queue_for_processing(self, video, priority):
+        """Queue video for processing"""
+        queue_task = VideoProcessingQueue.objects.create(
+            video=video,
+            priority=priority,
+            status='queued'
+        )
+
+        # Trigger async processing task
+        process_video_task.delay(str(video.id))
+
+        logger.info(f"Video {video.id} queued for processing with priority {priority}")
+        return queue_task
+
+    def _get_queue_position(self, video):
+        """Get position in processing queue"""
+        queue_task = video.processing_tasks.filter(status='queued').first()
+        if not queue_task:
+            return 0
+
+        position = VideoProcessingQueue.objects.filter(
+            status='queued',
+            priority__gte=queue_task.priority,
+            queued_at__lt=queue_task.queued_at
+        ).count() + 1
+
+        return position
+
+
+# ===========================
+# Video Processing Status View
+# ===========================
+
+class VideoProcessingStatusView(generics.RetrieveAPIView):
+    """
+    Get video processing status
+
+    GET /api/videos/{id}/processing-status/
+    """
+
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        return Video.objects.all()
+
+    def retrieve(self, request, *args, **kwargs):
         video = self.get_object()
+
+        # Check permissions - users can only see their own videos unless staff
+        if not request.user.is_staff and video.uploaded_by != request.user:
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         queue_task = video.processing_tasks.filter(
             status__in=['queued', 'processing']
@@ -141,8 +262,9 @@ class VideoViewSet(viewsets.ModelViewSet):
             response_data.update({
                 'queue_status': queue_task.status,
                 'current_step': queue_task.current_step,
-                'queue_position': self._get_queue_position(queue_task),
+                'queue_position': self._calculate_queue_position(queue_task),
                 'started_at': queue_task.started_at,
+                'estimated_completion': self._estimate_completion(queue_task),
             })
 
         if video.status == 'ready':
@@ -152,21 +274,59 @@ class VideoViewSet(viewsets.ModelViewSet):
                 ) if video.master_playlist_path else None,
                 'thumbnail_url': video.thumbnail_file.url if video.thumbnail_file else None,
                 'duration': video.get_duration_formatted(),
-                'qualities': list(video.qualities.values(
-                    'quality', 'resolution_width', 'resolution_height', 'bitrate'
-                ))
+                'qualities': VideoQualitySerializer(video.qualities.all(), many=True).data
             })
 
         return Response(response_data)
 
-    @action(detail=True, methods=['post'])
-    def retry_processing(self, request, pk=None):
-        """
-        Retry failed video processing
+    def _calculate_queue_position(self, queue_task):
+        """Calculate position in queue"""
+        if queue_task.status != 'queued':
+            return 0
 
-        POST /api/videos/{id}/retry_processing/
-        """
+        return VideoProcessingQueue.objects.filter(
+            status='queued',
+            priority__gte=queue_task.priority,
+            queued_at__lt=queue_task.queued_at
+        ).count() + 1
+
+    def _estimate_completion(self, queue_task):
+        """Estimate completion time (simplified)"""
+        # This is a placeholder - implement based on your processing metrics
+        if queue_task.status == 'processing':
+            return "Processing now"
+        elif queue_task.status == 'queued':
+            position = self._calculate_queue_position(queue_task)
+            return f"~{position * 5} minutes"
+        return None
+
+
+# ===========================
+# Video Retry Processing View
+# ===========================
+
+class VideoRetryProcessingView(generics.GenericAPIView):
+    """
+    Retry failed video processing
+
+    POST /api/videos/{id}/retry-processing/
+    """
+
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
+
+    def get_queryset(self):
+        return Video.objects.all()
+
+    def post(self, request, *args, **kwargs):
         video = self.get_object()
+
+        # Check permissions
+        if not request.user.is_staff and video.uploaded_by != request.user:
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
 
         if video.status != 'failed':
             return Response(
@@ -180,128 +340,167 @@ class VideoViewSet(viewsets.ModelViewSet):
         video.processing_progress = 0
         video.save(update_fields=['status', 'processing_error', 'processing_progress'])
 
-        # Create new queue task
+        # Create new queue task with high priority
         queue_task = VideoProcessingQueue.objects.create(
             video=video,
-            priority='high',  # Give priority to retries
+            priority='high',
             status='queued'
         )
 
         # Trigger processing
         process_video_task.delay(str(video.id))
 
+        logger.info(f"Video {video.id} queued for reprocessing")
+
         return Response({
             'message': 'Video queued for reprocessing',
-            'status': video.status
+            'status': video.status,
+            'queue_position': self._calculate_queue_position(queue_task)
         })
 
-    @action(detail=True, methods=['delete'])
-    def delete_video(self, request, pk=None):
-        """
-        Delete video and all associated files
-
-        DELETE /api/videos/{id}/delete_video/
-        """
-        video = self.get_object()
-
-        # Delete processed files
-        import shutil
-        from pathlib import Path
-        from django.conf import settings
-
-        processed_path = Path(settings.MEDIA_ROOT) / 'videos' / 'processed' / str(video.id)
-        if processed_path.exists():
-            try:
-                shutil.rmtree(processed_path)
-                logger.info(f"Deleted processed files for video {video.id}")
-            except Exception as e:
-                logger.error(f"Error deleting files: {str(e)}")
-
-        # Delete original file
-        if video.original_file:
-            try:
-                video.original_file.delete()
-            except Exception as e:
-                logger.error(f"Error deleting original file: {str(e)}")
-
-        # Delete database record
-        video.delete()
-
-        return Response(
-            {'message': 'Video deleted successfully'},
-            status=status.HTTP_204_NO_CONTENT
-        )
-
-    def _get_queue_position(self, queue_task):
-        """Calculate position in processing queue"""
-        if queue_task.status != 'queued':
-            return 0
-
-        position = VideoProcessingQueue.objects.filter(
+    def _calculate_queue_position(self, queue_task):
+        """Calculate queue position"""
+        return VideoProcessingQueue.objects.filter(
             status='queued',
             priority__gte=queue_task.priority,
             queued_at__lt=queue_task.queued_at
         ).count() + 1
 
-        return position
 
+# ===========================
+# Video Delete View
+# ===========================
 
-# Helper functions for video management
-
-def get_video_stream_url(video_id, request=None):
+class VideoDeleteView(generics.DestroyAPIView):
     """
-    Get the HLS streaming URL for a video
+    Delete video and all associated files
 
-    Args:
-        video_id: Video UUID
-        request: Django request object (optional, for building absolute URL)
-
-    Returns:
-        str: Master playlist URL or None if not ready
+    DELETE /api/videos/{id}/delete/
     """
-    try:
-        video = Video.objects.get(id=video_id, status='ready')
 
-        if not video.master_playlist_path:
-            return None
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
 
-        if request:
-            return request.build_absolute_uri(f'/media/{video.master_playlist_path}')
+    def get_queryset(self):
+        return Video.objects.all()
 
-        return f'/media/{video.master_playlist_path}'
+    def perform_destroy(self, instance):
+        """Delete video and associated files"""
+        # Check permissions
+        if not self.request.user.is_staff and instance.uploaded_by != self.request.user:
+            raise PermissionError("Permission denied")
 
-    except Video.DoesNotExist:
-        return None
+        # Delete processed files
+        processed_path = Path(settings.MEDIA_ROOT) / 'videos' / 'processed' / str(instance.id)
+        if processed_path.exists():
+            try:
+                shutil.rmtree(processed_path)
+                logger.info(f"Deleted processed files for video {instance.id}")
+            except Exception as e:
+                logger.error(f"Error deleting processed files: {str(e)}")
+
+        # Delete original file
+        if instance.original_file:
+            try:
+                instance.original_file.delete(save=False)
+            except Exception as e:
+                logger.error(f"Error deleting original file: {str(e)}")
+
+        # Delete thumbnail
+        if instance.thumbnail_file:
+            try:
+                instance.thumbnail_file.delete(save=False)
+            except Exception as e:
+                logger.error(f"Error deleting thumbnail: {str(e)}")
+
+        # Delete database record
+        instance.delete()
+        logger.info(f"Video {instance.id} deleted successfully")
+
+    def destroy(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+            self.perform_destroy(instance)
+            return Response(
+                {'message': 'Video deleted successfully'},
+                status=status.HTTP_204_NO_CONTENT
+            )
+        except PermissionError:
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+        except Exception as e:
+            logger.error(f"Error deleting video: {str(e)}", exc_info=True)
+            return Response(
+                {'error': 'Failed to delete video'},
+                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            )
 
 
-def track_video_view(video_id, user=None, session_id=None, watch_duration=0,
-                     last_position=0, quality='medium', request=None):
+# ===========================
+# Video View Tracking
+# ===========================
+
+class VideoViewTrackingView(generics.CreateAPIView):
     """
-    Track video view and update analytics
+    Track video views and watch analytics
 
-    Args:
-        video_id: Video UUID
-        user: User instance (optional)
-        session_id: Anonymous session ID
-        watch_duration: Seconds watched
-        last_position: Last playback position
-        quality: Quality watched
-        request: Django request object (optional)
+    POST /api/videos/{id}/track-view/
+    Body:
+    {
+        "watch_duration_seconds": 120.5,
+        "last_position_seconds": 150.0,
+        "quality_watched": "medium",
+        "session_id": "anonymous-session-id"
+    }
     """
-    from .models import VideoView
 
-    try:
-        video = Video.objects.get(id=video_id)
+    serializer_class = VideoViewTrackingSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    lookup_field = 'id'
+
+    def create(self, request, *args, **kwargs):
+        video_id = kwargs.get('id')
+        video = get_object_or_404(Video, id=video_id, status='ready')
+
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        user = request.user if request.user.is_authenticated else None
+        session_id = serializer.validated_data.get('session_id', 'anonymous')
+
+        view_record = self._track_view(
+            video=video,
+            user=user,
+            session_id=session_id,
+            validated_data=serializer.validated_data
+        )
+
+        return Response({
+            'message': 'View tracked successfully',
+            'total_views': video.view_count,
+            'watch_duration': view_record.watch_duration_seconds
+        }, status=status.HTTP_201_CREATED)
+
+    def _track_view(self, video, user, session_id, validated_data):
+        """Track video view"""
+        watch_duration = validated_data['watch_duration_seconds']
+        last_position = validated_data['last_position_seconds']
+        quality = validated_data['quality_watched']
 
         # Get or create view record
         view, created = VideoView.objects.get_or_create(
             video=video,
             user=user,
-            session_id=session_id or 'anonymous',
+            session_id=session_id,
             defaults={
                 'watch_duration_seconds': watch_duration,
                 'last_position_seconds': last_position,
                 'quality_watched': quality,
+                'ip_address': self._get_client_ip(),
+                'user_agent': self.request.META.get('HTTP_USER_AGENT', '')[:500],
+                'device_type': self._detect_device_type(),
             }
         )
 
@@ -315,242 +514,255 @@ def track_video_view(video_id, user=None, session_id=None, watch_duration=0,
                 'quality_watched', 'updated_at'
             ])
 
-        # Extract device info from request
-        if request:
-            view.ip_address = get_client_ip(request)
-            view.user_agent = request.META.get('HTTP_USER_AGENT', '')[:500]
-            view.device_type = detect_device_type(request)
-            view.save(update_fields=['ip_address', 'user_agent', 'device_type'])
-
         # Update video analytics
+        self._update_video_analytics(video)
+
+        logger.info(f"Tracked view for video {video.id}: {watch_duration}s watched")
+
+        return view
+
+    def _update_video_analytics(self, video):
+        """Update video-level analytics"""
         video.view_count = video.video_views.count()
         video.total_watch_time_seconds = video.video_views.aggregate(
-            total=models.Sum('watch_duration_seconds')
+            total=Sum('watch_duration_seconds')
         )['total'] or 0
         video.save(update_fields=['view_count', 'total_watch_time_seconds'])
 
-        logger.info(f"Tracked view for video {video_id}: {watch_duration}s watched")
+    def _get_client_ip(self):
+        """Extract client IP from request"""
+        x_forwarded_for = self.request.META.get('HTTP_X_FORWARDED_FOR')
+        if x_forwarded_for:
+            return x_forwarded_for.split(',')[0].strip()
+        return self.request.META.get('REMOTE_ADDR', '')
 
-    except Video.DoesNotExist:
-        logger.warning(f"Video {video_id} not found for view tracking")
-    except Exception as e:
-        logger.error(f"Error tracking video view: {str(e)}")
+    def _detect_device_type(self):
+        """Detect device type from user agent"""
+        user_agent = self.request.META.get('HTTP_USER_AGENT', '').lower()
 
-
-def get_client_ip(request):
-    """Extract client IP from request"""
-    x_forwarded_for = request.META.get('HTTP_X_FORWARDED_FOR')
-    if x_forwarded_for:
-        ip = x_forwarded_for.split(',')[0]
-    else:
-        ip = request.META.get('REMOTE_ADDR')
-    return ip
-
-
-def detect_device_type(request):
-    """Detect device type from user agent"""
-    user_agent = request.META.get('HTTP_USER_AGENT', '').lower()
-
-    if 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent:
-        return 'mobile'
-    elif 'tablet' in user_agent or 'ipad' in user_agent:
-        return 'tablet'
-    elif 'tv' in user_agent or 'smarttv' in user_agent:
-        return 'tv'
-    else:
+        if 'mobile' in user_agent or 'android' in user_agent or 'iphone' in user_agent:
+            return 'mobile'
+        elif 'tablet' in user_agent or 'ipad' in user_agent:
+            return 'tablet'
+        elif 'tv' in user_agent or 'smarttv' in user_agent:
+            return 'tv'
         return 'desktop'
 
 
-def get_recommended_quality(request):
-    """
-    Recommend video quality based on connection
+# ===========================
+# Video Analytics View
+# ===========================
 
-    Args:
-        request: Django request object
-
-    Returns:
-        str: Recommended quality ('low', 'medium', 'high')
-    """
-    # Simple heuristic based on device type
-    device_type = detect_device_type(request)
-
-    if device_type == 'mobile':
-        return 'medium'
-    elif device_type == 'desktop' or device_type == 'tv':
-        return 'high'
-    else:
-        return 'medium'
-
-
-def validate_video_file(video_file):
-    """
-    Validate uploaded video file
-
-    Args:
-        video_file: Django UploadedFile object
-
-    Returns:
-        tuple: (is_valid, error_message)
-    """
-    # Check if file exists
-    if not video_file:
-        return False, "No video file provided"
-
-    # Check file size (max 2GB)
-    max_size = 2 * 1024 * 1024 * 1024
-    if video_file.size > max_size:
-        return False, f"File too large. Maximum size is 2GB, got {video_file.size / (1024**3):.2f}GB"
-
-    # Check minimum size (1MB)
-    min_size = 1 * 1024 * 1024
-    if video_file.size < min_size:
-        return False, "File too small. Minimum size is 1MB"
-
-    # Check file extension
-    allowed_extensions = ['.mp4', '.mov', '.avi', '.mkv', '.webm', '.flv', '.mpeg']
-    file_ext = video_file.name.lower().split('.')[-1]
-    if f'.{file_ext}' not in allowed_extensions:
-        return False, f"Invalid file extension. Allowed: {', '.join(allowed_extensions)}"
-
-    # Check content type
-    allowed_types = [
-        'video/mp4', 'video/mpeg', 'video/quicktime',
-        'video/x-msvideo', 'video/x-matroska', 'video/webm'
-    ]
-    if video_file.content_type not in allowed_types:
-        return False, f"Invalid content type: {video_file.content_type}"
-
-    return True, None
-
-
-def bulk_process_videos(video_ids, priority='normal'):
-    """
-    Queue multiple videos for processing
-
-    Args:
-        video_ids: List of video UUIDs
-        priority: Processing priority
-
-    Returns:
-        dict: Processing results
-    """
-    results = {
-        'queued': [],
-        'failed': [],
-        'already_processing': []
-    }
-
-    for video_id in video_ids:
-        try:
-            video = Video.objects.get(id=video_id)
-
-            # Check if already processing
-            if video.status in ['processing', 'ready']:
-                results['already_processing'].append(str(video_id))
-                continue
-
-            # Queue for processing
-            queue_task = VideoProcessingQueue.objects.create(
-                video=video,
-                priority=priority,
-                status='queued'
-            )
-
-            # Trigger processing
-            process_video_task.delay(str(video.id))
-
-            results['queued'].append(str(video_id))
-
-        except Video.DoesNotExist:
-            results['failed'].append({
-                'id': str(video_id),
-                'error': 'Video not found'
-            })
-        except Exception as e:
-            results['failed'].append({
-                'id': str(video_id),
-                'error': str(e)
-            })
-
-    return results
-
-
-def get_video_analytics(video_id):
+class VideoAnalyticsView(generics.RetrieveAPIView):
     """
     Get comprehensive analytics for a video
 
-    Args:
-        video_id: Video UUID
-
-    Returns:
-        dict: Analytics data
+    GET /api/videos/{id}/analytics/
     """
-    from django.db.models import Avg, Sum, Count
-    from .models import VideoView
 
-    try:
-        video = Video.objects.get(id=video_id)
+    permission_classes = [IsAuthenticated]
+    lookup_field = 'id'
 
+    def get_queryset(self):
+        return Video.objects.all()
+
+    def retrieve(self, request, *args, **kwargs):
+        video = self.get_object()
+
+        # Check permissions - only owner or staff can see analytics
+        if not request.user.is_staff and video.uploaded_by != request.user:
+            return Response(
+                {'error': 'Permission denied'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        analytics = self._calculate_analytics(video)
+
+        return Response(analytics)
+
+    def _calculate_analytics(self, video):
+        """Calculate comprehensive analytics"""
         views = VideoView.objects.filter(video=video)
 
-        analytics = {
-            'video_id': str(video.id),
-            'title': video.title,
-            'total_views': views.count(),
-            'unique_users': views.filter(user__isnull=False).values('user').distinct().count(),
-            'total_watch_time_seconds': views.aggregate(Sum('watch_duration_seconds'))['watch_duration_seconds__sum'] or 0,
-            'average_watch_time_seconds': views.aggregate(Avg('watch_duration_seconds'))['watch_duration_seconds__avg'] or 0,
-            'completion_rate': views.filter(is_completed=True).count() / max(views.count(), 1) * 100,
-            'device_breakdown': {},
-            'quality_breakdown': {},
-        }
+        # Basic stats
+        total_views = views.count()
+        unique_users = views.filter(user__isnull=False).values('user').distinct().count()
+
+        # Watch time stats
+        watch_stats = views.aggregate(
+            total_watch_time=Sum('watch_duration_seconds'),
+            avg_watch_time=Avg('watch_duration_seconds')
+        )
+
+        # Completion rate
+        completed_views = views.filter(is_completed=True).count()
+        completion_rate = (completed_views / total_views * 100) if total_views > 0 else 0
 
         # Device breakdown
+        device_breakdown = {}
         device_stats = views.values('device_type').annotate(count=Count('id'))
         for stat in device_stats:
-            analytics['device_breakdown'][stat['device_type'] or 'unknown'] = stat['count']
+            device_breakdown[stat['device_type'] or 'unknown'] = stat['count']
 
         # Quality breakdown
+        quality_breakdown = {}
         quality_stats = views.values('quality_watched').annotate(count=Count('id'))
         for stat in quality_stats:
-            analytics['quality_breakdown'][stat['quality_watched'] or 'unknown'] = stat['count']
+            quality_breakdown[stat['quality_watched'] or 'unknown'] = stat['count']
 
-        return analytics
+        # Engagement rate (views that watched >25%)
+        if video.duration_seconds:
+            engaged_views = views.filter(
+                watch_duration_seconds__gte=video.duration_seconds * 0.25
+            ).count()
+            engagement_rate = (engaged_views / total_views * 100) if total_views > 0 else 0
+        else:
+            engagement_rate = 0
 
-    except Video.DoesNotExist:
-        return None
+        return {
+            'video_id': str(video.id),
+            'title': video.title,
+            'status': video.status,
+            'duration_seconds': video.duration_seconds,
+            'total_views': total_views,
+            'unique_users': unique_users,
+            'total_watch_time_seconds': watch_stats['total_watch_time'] or 0,
+            'average_watch_time_seconds': round(watch_stats['avg_watch_time'] or 0, 2),
+            'completion_rate': round(completion_rate, 2),
+            'engagement_rate': round(engagement_rate, 2),
+            'device_breakdown': device_breakdown,
+            'quality_breakdown': quality_breakdown,
+        }
 
 
-def cleanup_failed_uploads():
+# ===========================
+# Bulk Video Operations View
+# ===========================
+
+class BulkVideoProcessView(views.APIView):
     """
-    Clean up videos stuck in uploaded/pending status
-    Should be run as a periodic task
+    Queue multiple videos for processing
+
+    POST /api/videos/bulk-process/
+    Body:
+    {
+        "video_ids": ["uuid1", "uuid2", "uuid3"],
+        "priority": "high"
+    }
     """
-    from datetime import timedelta
 
-    threshold = timezone.now() - timedelta(hours=24)
+    permission_classes = [IsAuthenticated]
 
-    # Find videos uploaded more than 24 hours ago but not processed
-    stale_videos = Video.objects.filter(
-        status__in=['pending', 'uploaded'],
-        created_at__lt=threshold
-    )
+    def post(self, request):
+        video_ids = request.data.get('video_ids', [])
+        priority = request.data.get('priority', 'normal')
 
-    cleaned_count = 0
-    for video in stale_videos:
-        logger.warning(f"Cleaning up stale video: {video.id}")
+        if not video_ids:
+            return Response(
+                {'error': 'No video IDs provided'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
 
-        # Delete original file
-        if video.original_file:
+        if not isinstance(video_ids, list):
+            return Response(
+                {'error': 'video_ids must be a list'},
+                status=status.HTTP_400_BAD_REQUEST
+            )
+
+        results = self._bulk_process(video_ids, priority)
+
+        return Response(results, status=status.HTTP_200_OK)
+
+    def _bulk_process(self, video_ids, priority):
+        """Process multiple videos"""
+        results = {
+            'queued': [],
+            'failed': [],
+            'already_processing': []
+        }
+
+        for video_id in video_ids:
             try:
-                video.original_file.delete()
+                video = Video.objects.get(id=video_id)
+
+                # Check permissions
+                if not self.request.user.is_staff and video.uploaded_by != self.request.user:
+                    results['failed'].append({
+                        'id': str(video_id),
+                        'error': 'Permission denied'
+                    })
+                    continue
+
+                # Check if already processing
+                if video.status in ['processing', 'ready']:
+                    results['already_processing'].append(str(video_id))
+                    continue
+
+                # Queue for processing
+                VideoProcessingQueue.objects.create(
+                    video=video,
+                    priority=priority,
+                    status='queued'
+                )
+
+                # Trigger processing
+                process_video_task.delay(str(video.id))
+
+                results['queued'].append(str(video_id))
+
+            except Video.DoesNotExist:
+                results['failed'].append({
+                    'id': str(video_id),
+                    'error': 'Video not found'
+                })
             except Exception as e:
-                logger.error(f"Error deleting file: {str(e)}")
+                results['failed'].append({
+                    'id': str(video_id),
+                    'error': str(e)
+                })
 
-        # Delete video record
-        video.delete()
-        cleaned_count += 1
+        return results
 
-    logger.info(f"Cleaned up {cleaned_count} stale videos")
-    return cleaned_count
 
+# ===========================
+# User's Videos List View
+# ===========================
+
+class UserVideosListView(generics.ListAPIView):
+    """
+    List videos uploaded by the authenticated user
+
+    GET /api/videos/my-videos/
+    """
+
+    serializer_class = VideoSerializer
+    permission_classes = [IsAuthenticated]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        return Video.objects.filter(
+            uploaded_by=self.request.user
+        ).select_related('category').prefetch_related('qualities').order_by('-created_at')
+
+
+# ===========================
+# Featured Videos List View
+# ===========================
+
+class FeaturedVideosListView(generics.ListAPIView):
+    """
+    List featured videos
+
+    GET /api/videos/featured/
+    """
+
+    serializer_class = VideoSerializer
+    permission_classes = [IsAuthenticatedOrReadOnly]
+    pagination_class = StandardResultsSetPagination
+
+    def get_queryset(self):
+        return Video.objects.filter(
+            is_featured=True,
+            is_active=True,
+            status='ready'
+        ).select_related('category').prefetch_related('qualities').order_by('-published_at')
