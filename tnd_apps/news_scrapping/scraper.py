@@ -8,7 +8,6 @@ from urllib.parse import urljoin
 from django.utils.text import slugify
 from .models import Article, Category, Tag, Author, NewsSource, ScrapingRun, ScrapingLog
 
-
 class TNDNewsDjangoScraper:
     def __init__(self, source_name="TND News Uganda"):
         try:
@@ -76,60 +75,71 @@ class TNDNewsDjangoScraper:
         )
         return author
 
-    def extract_article_data(self, article_div):
-        """Extract data from a single article div element"""
+    def extract_article_data(self, article_element):
+        """Extract data from a single article element"""
         try:
             data = {}
-
-            # Extract post ID
-            post_div = article_div.find('div', class_=lambda x: x and 'post-' in x)
-            if post_div:
-                classes = post_div.get('class', [])
-                post_classes = [cls for cls in classes if cls.startswith('post-')]
-                data['external_id'] = post_classes[0] if post_classes else ''
-
-            # Extract title and URL
-            title_element = article_div.find('h2', class_='entry-title')
-            if title_element:
-                title_link = title_element.find('a')
-                if title_link:
-                    data['title'] = title_link.get_text(strip=True)
-                    data['url'] = title_link.get('href', '')
-
-            # Extract featured image
-            img_element = article_div.find('a', class_='post-img')
-            if img_element:
-                style = img_element.get('style', '')
-                img_match = re.search(r"url\('([^']+)'\)", style)
-                data['featured_image'] = img_match.group(1) if img_match else ''
-
-            # Extract category
-            category_element = article_div.find('div', class_='cat-links')
-            if category_element:
-                category_link = category_element.find('a')
+    
+            # Extract post ID from article tag
+            article_id = article_element.get('id', '')
+            if article_id:
+                data['external_id'] = article_id
+    
+            # Extract title and URL from entry-header
+            header = article_element.find('header', class_='entry-header')
+            if header:
+                title_element = header.find('h2', class_='entry-title')
+                if title_element:
+                    title_link = title_element.find('a')
+                    if title_link:
+                        data['title'] = title_link.get_text(strip=True)
+                        data['url'] = title_link.get('href', '')
+    
+            # Extract featured image from post-thumbnail div
+            thumbnail_div = article_element.find('div', class_='post-thumbnail')
+            if thumbnail_div:
+                img_element = thumbnail_div.find('img')
+                if img_element:
+                    # Try multiple image attributes
+                    data['featured_image'] = (
+                        img_element.get('src') or 
+                        img_element.get('data-src') or 
+                        img_element.get('data-lazy-src') or
+                        ''
+                    )
+    
+            # Extract category from cat-links span
+            cat_links = article_element.find('span', class_='cat-links')
+            if cat_links:
+                category_link = cat_links.find('a')
                 data['category'] = category_link.get_text(strip=True) if category_link else ''
-
-            # Extract date and author
-            date_element = article_div.find('div', class_='date')
-            if date_element:
-                date_link = date_element.find('a')
-                data['published_time'] = date_link.get_text(strip=True) if date_link else ''
-
-            author_element = article_div.find('div', class_='by-author')
-            if author_element:
-                author_link = author_element.find('a')
-                data['author'] = author_link.get_text(strip=True) if author_link else ''
-                data['author_url'] = author_link.get('href', '') if author_link else ''
-
-            # Extract excerpt
-            content_element = article_div.find('div', class_='entry-content')
-            if content_element:
-                excerpt_p = content_element.find('p')
+    
+            # Extract date from entry-meta
+            entry_meta = article_element.find('div', class_='entry-meta')
+            if entry_meta:
+                posted_on = entry_meta.find('span', class_='posted-on')
+                if posted_on:
+                    time_element = posted_on.find('time', class_='entry-date')
+                    if time_element:
+                        data['published_time'] = time_element.get_text(strip=True)
+                        # Also get datetime attribute if available
+                        data['published_datetime'] = time_element.get('datetime', '')
+    
+            # Extract excerpt from entry-content
+            content_div = article_element.find('div', class_='entry-content')
+            if content_div:
+                excerpt_p = content_div.find('p')
                 data['excerpt'] = excerpt_p.get_text(strip=True) if excerpt_p else ''
-
+    
+            # Note: Author information is not visible in the new structure
+            # If needed, it will have to be scraped from the full article page
+            data['author'] = ''
+            data['author_url'] = ''
+    
             return data
-
+    
         except Exception as e:
+            print(f"Error extracting article data: {str(e)}")
             return None
 
     def scrape_full_article_content(self, article_url, run):
@@ -137,61 +147,90 @@ class TNDNewsDjangoScraper:
         try:
             response = self.session.get(article_url, timeout=30)
             response.raise_for_status()
-
+    
             soup = BeautifulSoup(response.content, 'html.parser')
-            main_element = soup.find('main', id='main')
-
-            if not main_element:
-                self.log_message(run, 'warning', f'No main content found for {article_url}', article_url)
+            
+            # Find the main article element
+            article_element = soup.find('article', class_=lambda x: x and 'post' in str(x))
+            
+            if not article_element:
+                self.log_message(run, 'warning', f'No article element found for {article_url}', article_url)
                 return None
-
+    
             article_data = {}
-
-            # Extract title
-            title_element = main_element.find('h1', class_='entry-title')
-            article_data['full_title'] = title_element.get_text(strip=True) if title_element else ''
-
-            # Extract featured image and caption
-            featured_img = main_element.find('figure', class_='post-featured-image')
-            if featured_img:
-                img_div = featured_img.find('div', class_='post-img')
-                if img_div:
-                    style = img_div.get('style', '')
-                    img_match = re.search(r"url\('([^']+)'\)", style)
-                    article_data['featured_image_url'] = img_match.group(1) if img_match else ''
-
-                caption = featured_img.find('figcaption')
-                article_data['image_caption'] = caption.get_text(strip=True) if caption else ''
-
-            # Extract content
-            content_div = main_element.find('div', class_='entry-content')
+    
+            # Extract title from h1 in entry-header
+            header = article_element.find('header', class_='entry-header')
+            if header:
+                title_element = header.find('h1', class_='entry-title')
+                article_data['full_title'] = title_element.get_text(strip=True) if title_element else ''
+                
+                # Extract author from entry-meta in header
+                entry_meta = header.find('div', class_='entry-meta')
+                if entry_meta:
+                    byline = entry_meta.find('span', class_='byline')
+                    if byline:
+                        author_link = byline.find('a', class_='url fn n')
+                        if author_link:
+                            article_data['author'] = author_link.get_text(strip=True)
+                            article_data['author_url'] = author_link.get('href', '')
+    
+            # Extract featured image from post-thumbnail div
+            thumbnail_div = article_element.find('div', class_='post-thumbnail')
+            if thumbnail_div:
+                img_element = thumbnail_div.find('img')
+                if img_element:
+                    article_data['featured_image_url'] = (
+                        img_element.get('src') or 
+                        img_element.get('data-src') or 
+                        ''
+                    )
+                    # Check for alt text as caption
+                    article_data['image_caption'] = img_element.get('alt', '')
+    
+            # Extract main content
+            content_div = article_element.find('div', class_='entry-content')
             full_content = []
-
+    
             if content_div:
-                paragraphs = content_div.find_all('p')
-                for p in paragraphs:
-                    if not p.find_parent(class_='simplesocialbuttons'):
-                        text = p.get_text(strip=True)
-                        if len(text) > 10:
-                            text = re.sub(r'\s+', ' ', text)
-                            full_content.append(text)
-
-            # Extract tags
-            footer_meta = main_element.find('footer', class_='entry-meta')
+                # Find all paragraphs, excluding those in social sharing, ads, and related posts
+                for p in content_div.find_all('p'):
+                    # Skip paragraphs inside specific containers
+                    if p.find_parent(class_=['wpzoom-social-sharing-buttons-top', 
+                                             'google-auto-placed', 
+                                             'jp-relatedposts',
+                                             'wp-block-jetpack-subscriptions']):
+                        continue
+                    
+                    # Skip empty paragraphs or those with only &nbsp;
+                    text = p.get_text(strip=True)
+                    if text and text != '' and len(text) > 10:
+                        # Clean up whitespace
+                        text = re.sub(r'\s+', ' ', text)
+                        full_content.append(text)
+    
+            # Extract tags - they might be in footer or elsewhere
             tags = []
+            footer_meta = article_element.find('footer', class_='entry-footer')
             if footer_meta:
                 tag_links = footer_meta.find_all('a', rel='tag')
                 tags = [tag.get_text(strip=True) for tag in tag_links]
-
+            
+            # If no tags in footer, try to find them elsewhere
+            if not tags:
+                # Look for any tag links in the article
+                tag_links = article_element.find_all('a', rel='tag')
+                tags = [tag.get_text(strip=True) for tag in tag_links]
+    
             article_data.update({
                 'full_content': '\n\n'.join(full_content),
                 'word_count': len(' '.join(full_content).split()),
                 'paragraph_count': len(full_content),
                 'tags': tags,
             })
-
+    
             return article_data
-
+    
         except Exception as e:
             self.log_message(run, 'error', f'Error scraping full content: {str(e)}', article_url)
             return None
@@ -213,13 +252,13 @@ class TNDNewsDjangoScraper:
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, 'html.parser')
-            main_element = soup.find('main', id='main')
+            blog_entries = soup.find('div', id='blog-entries')
 
-            if not main_element:
-                raise Exception("Could not find main content area")
+            if not blog_entries:
+                raise Exception("Could not find blog entries area")
 
             # Find all article containers
-            article_containers = main_element.find_all('div', class_='col-sm-6 col-xxl-4 post-col')
+            article_containers = blog_entries.find_all('article', class_='bnm-entry')
             run.articles_found = len(article_containers)
             run.save()
 
