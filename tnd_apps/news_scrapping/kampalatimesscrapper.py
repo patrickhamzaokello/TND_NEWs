@@ -111,7 +111,8 @@ class KampalaTimesDjangoScraper:
             
             # Generate external_id from URL hash if URL exists
             if data['url']:
-                data['external_id'] = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
+                full_hash = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
+                data['external_id'] = full_hash[:20]  # Take first 20 characters
             else:
                 data['external_id'] = ''
     
