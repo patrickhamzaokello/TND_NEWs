@@ -17,7 +17,7 @@ class KampalaTimesDjangoScraper:
             self.source = NewsSource.objects.create(
                 name=source_name,
                 base_url="https://www.kampalaedgetimes.com",
-                news_url="https://www.kampalaedgetimes.com"
+                news_url="https://www.kampalaedgetimes.com/kampala-edge-times/kampala-edge-times-articles"
             )
 
         self.headers = {
