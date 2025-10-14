@@ -65,9 +65,8 @@ class TNDNewsDjangoScraper:
 
     def get_or_create_author(self, author_name, profile_url=""):
         """Get or create an author"""
-        if not author_name:
-            return None
-
+        # Default to "Guest" if author_name is empty or None
+        author_name = author_name or "Guest"
         author, created = Author.objects.get_or_create(
             name=author_name,
             source=self.source,
@@ -332,6 +331,13 @@ class TNDNewsDjangoScraper:
                             article.paragraph_count = full_data['paragraph_count']
                             article.image_caption = full_data.get('image_caption', '')
                             article.has_full_content = True
+                            
+                            # Update author from full content if available
+                            if full_data.get('author'):
+                                article.author = self.get_or_create_author(
+                                    full_data['author'],
+                                    full_data.get('author_url', '')
+                                )
 
                     article.save()
 
