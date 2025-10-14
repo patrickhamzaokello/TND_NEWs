@@ -2,6 +2,7 @@ import requests
 from bs4 import BeautifulSoup
 import time
 import re
+import hashlib
 from datetime import datetime
 from django.utils import timezone
 from urllib.parse import urljoin
