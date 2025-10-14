@@ -2,6 +2,7 @@ from celery import shared_task
 from celery.utils.log import get_task_logger
 from django.conf import settings
 from .scraper import TNDNewsDjangoScraper
+from .kampalatimesscrapper import KampalaTimesDjangoScraper
 from .dokolo_scraper import DokoloPostDjangoScraper
 from .models import ScrapingRun, ScrapingLog,ScheduledNotification
 from .dm_scrapper import MonitorNewsDjangoScraper
@@ -64,7 +65,7 @@ def scrape_kampalatimes_news(self, get_full_content=True, max_articles=None, sou
     try:
         logger.info(f"Starting Kampala Edge Times scraping task - Task ID: {self.request.id}")
 
-        scraper = TNDNewsDjangoScraper(source_name=source_name)
+        scraper = KampalaTimesDjangoScraper(source_name=source_name)
 
         # Update the scraping run with task ID
         latest_run = ScrapingRun.objects.filter(
