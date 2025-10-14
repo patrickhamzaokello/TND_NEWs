@@ -229,7 +229,7 @@ class KampalaTimesDjangoScraper:
             response.raise_for_status()
 
             soup = BeautifulSoup(response.content, 'html.parser')
-            blog_entries = soup.find('div', class_='loop loop-grid')
+            blog_entries = soup.find('div', class_=lambda x: x and 'loop' in x and 'grid' in x)
 
             if not blog_entries:
                 raise Exception("Could not find blog entries area")
