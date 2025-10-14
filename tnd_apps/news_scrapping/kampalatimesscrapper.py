@@ -79,42 +79,72 @@ class KampalaTimesDjangoScraper:
         try:
             data = {}
     
-            # Extract post ID from article tag
-            article_id = article_element.get('id', '')
-            if article_id:
-                data['external_id'] = article_id.replace('post-', '')
-    
-            # Extract title and URL from content div
-            content_div = article_element.find('div', class_='content')
-            if content_div:
-                title_element = content_div.find('h2', class_='is-title post-title')
+            # Try multiple ways to find title and URL
+            title = None
+            url = None
+            title_element = article_element.find('h2', class_='is-title post-title')
+            if title_element:
+                title_link = title_element.find('a')
+                if title_link:
+                    title = title_link.get_text(strip=True)
+                    url = title_link.get('href', '')
+            
+            if not title:
+                title_element = article_element.find('h2')
                 if title_element:
                     title_link = title_element.find('a')
                     if title_link:
-                        data['title'] = title_link.get_text(strip=True)
-                        data['url'] = title_link.get('href', '')
+                        title = title_link.get_text(strip=True)
+                        url = title_link.get('href', '')
+            
+            if not title:
+                links = article_element.find_all('a', href=True)
+                for link in links:
+                    link_text = link.get_text(strip=True)
+                    if len(link_text) > 20:
+                        title = link_text
+                        url = link.get('href', '')
+                        break
+            
+            data['title'] = title or ''
+            data['url'] = urljoin(self.source['base_url'], url) if url else ''
+            
+            # Generate external_id from URL hash if URL exists
+            if data['url']:
+                data['external_id'] = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
+            else:
+                data['external_id'] = ''
     
-            # Extract featured image from media div
+            # Extract featured image
+            featured_image = None
             media_div = article_element.find('div', class_='media')
             if media_div:
                 img_span = media_div.find('span', class_='img')
                 if img_span:
-                    data['featured_image'] = img_span.get('data-bgsrc', '')
+                    featured_image = img_span.get('data-bgsrc') or img_span.get('style', '').split('url("')[1].split('")')[0] if 'url(' in img_span.get('style', '') else None
+            if not featured_image:
+                img_element = article_element.find('img')
+                if img_element:
+                    featured_image = img_element.get('src') or img_element.get('data-src')
+            data['featured_image'] = featured_image or ''
     
-            # Extract category from cat-labels span
+            # Extract category
             cat_labels = article_element.find('span', class_='cat-labels')
             if cat_labels:
-                category_link = cat_labels.find('a')
+                category_link = cat_labels.find('a', class_='category')
                 data['category'] = category_link.get_text(strip=True) if category_link else ''
+            if not data.get('category'):
+                category_links = article_element.find_all('a', class_=lambda x: x and 'category' in str(x))
+                if category_links:
+                    data['category'] = category_links[0].get_text(strip=True)
     
-            # Extract date and author from post-meta
-            post_meta = content_div.find('div', class_='post-meta') if content_div else None
+            # Extract date and author
+            post_meta = article_element.find('div', class_='post-meta')
             if post_meta:
                 date_element = post_meta.find('time', class_='post-date')
                 if date_element:
                     data['published_time'] = date_element.get_text(strip=True)
                     data['published_datetime'] = date_element.get('datetime', '')
-                
                 author_element = post_meta.find('span', class_='post-author')
                 if author_element:
                     author_link = author_element.find('a')
@@ -123,15 +153,26 @@ class KampalaTimesDjangoScraper:
                         data['author_url'] = author_link.get('href', '')
     
             # Extract excerpt
-            excerpt_div = content_div.find('div', class_='excerpt') if content_div else None
+            excerpt_div = article_element.find('div', class_='excerpt')
             if excerpt_div:
                 excerpt_p = excerpt_div.find('p')
                 data['excerpt'] = excerpt_p.get_text(strip=True) if excerpt_p else ''
     
-            return data
+            if data['title'] and not data['url']:
+                links = article_element.find_all('a', href=True)
+                for link in links:
+                    if 'kampalaedgetimes.com' in link.get('href', ''):
+                        data['url'] = urljoin(self.source['base_url'], link.get('href'))
+                        data['external_id'] = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
+                        break
+            
+            if data.get('title'):
+                self.log_message('info', f"Extracted: {data['title'][:50]}... | External ID: {data['external_id'][:8]}... | Category: {data.get('category', 'None')}")
+                return data
+            return None
     
         except Exception as e:
-            print(f"Error extracting article data: {str(e)}")
+            self.log_message('error', f"Error extracting article data: {str(e)}")
             return None
 
     def scrape_full_article_content(self, article_url, run):
