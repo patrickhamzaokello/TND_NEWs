@@ -75,7 +75,7 @@ class KampalaTimesDjangoScraper:
         )
         return author
 
-    def extract_article_data(self, article_element):
+    def extract_article_data(self, article_element, run):
         """Extract data from a single article element"""
         try:
             data = {}
@@ -167,14 +167,14 @@ class KampalaTimesDjangoScraper:
                         data['url'] = urljoin(self.source['base_url'], link.get('href'))
                         data['external_id'] = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
                         break
-            
+
             if data.get('title'):
-                self.log_message('info', f"Extracted: {data['title'][:50]}... | External ID: {data['external_id'][:8]}... | Category: {data.get('category', 'None')}")
+                self.log_message(run, 'info',
+                                 f"Extracted: {data['title'][:50]}... | External ID: {data['external_id'][:8]}... | Category: {data.get('category', 'None')}")
                 return data
             return None
-    
         except Exception as e:
-            self.log_message('error', f"Error extracting article data: {str(e)}")
+            self.log_message(run, 'error', f"Error extracting article data: {str(e)}")
             return None
 
     def scrape_full_article_content(self, article_url, run):
@@ -290,7 +290,7 @@ class KampalaTimesDjangoScraper:
             for i, container in enumerate(article_containers):
                 try:
                     # Extract basic article data
-                    article_data = self.extract_article_data(container)
+                    article_data = self.extract_article_data(container, run)
                     if not article_data or not article_data.get('url'):
                         run.articles_skipped += 1
                         continue
