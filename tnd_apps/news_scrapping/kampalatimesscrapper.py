@@ -79,7 +79,7 @@ class KampalaTimesDjangoScraper:
         """Extract data from a single article element"""
         try:
             data = {}
-    
+
             # Try multiple ways to find title and URL
             title = None
             url = None
@@ -89,7 +89,7 @@ class KampalaTimesDjangoScraper:
                 if title_link:
                     title = title_link.get_text(strip=True)
                     url = title_link.get('href', '')
-            
+
             if not title:
                 title_element = article_element.find('h2')
                 if title_element:
@@ -97,7 +97,7 @@ class KampalaTimesDjangoScraper:
                     if title_link:
                         title = title_link.get_text(strip=True)
                         url = title_link.get('href', '')
-            
+
             if not title:
                 links = article_element.find_all('a', href=True)
                 for link in links:
@@ -106,9 +106,10 @@ class KampalaTimesDjangoScraper:
                         title = link_text
                         url = link.get('href', '')
                         break
-            
+
             data['title'] = title or ''
-            data['url'] = urljoin(self.source['base_url'], url) if url else ''
+            # Use dot notation for self.source.base_url
+            data['url'] = urljoin(self.source.base_url, url) if url else ''
             
             # Generate external_id from URL hash if URL exists
             if data['url']:
@@ -164,7 +165,7 @@ class KampalaTimesDjangoScraper:
                 links = article_element.find_all('a', href=True)
                 for link in links:
                     if 'kampalaedgetimes.com' in link.get('href', ''):
-                        data['url'] = urljoin(self.source['base_url'], link.get('href'))
+                        data['url'] = urljoin(self.source.base_url, url) if url else ''
                         data['external_id'] = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
                         break
 
