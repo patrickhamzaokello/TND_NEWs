@@ -124,11 +124,24 @@ class KampalaTimesDjangoScraper:
             if media_div:
                 img_span = media_div.find('span', class_='img')
                 if img_span:
-                    featured_image = img_span.get('data-bgsrc') or img_span.get('style', '').split('url("')[1].split('")')[0] if 'url(' in img_span.get('style', '') else None
+                    featured_image = img_span.get('data-bgsrc')
+                    if featured_image:
+                        self.log_message(run, 'info', f"Found featured image: {featured_image}")
+                    else:
+                        self.log_message(run, 'warning', f"No data-bgsrc found in img span", context=str(img_span)[:500])
+                else:
+                    self.log_message(run, 'warning', f"No span with class 'img' found in media div", context=str(media_div)[:500])
+            else:
+                self.log_message(run, 'warning', f"No div with class 'media' found", context=str(article_element)[:500])
+            
+            # Fallback to img element if no data-bgsrc found
             if not featured_image:
                 img_element = article_element.find('img')
                 if img_element:
                     featured_image = img_element.get('src') or img_element.get('data-src')
+                    if featured_image:
+                        self.log_message(run, 'info', f"Fallback: Found featured image in img tag: {featured_image}")
+            
             data['featured_image'] = featured_image or ''
     
             # Extract category
