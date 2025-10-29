@@ -6,7 +6,7 @@ from .models import (
     NewsSource, Category, Tag, Author, Article,
     ScrapingRun, ScrapingLog, UserProfile, ArticleView, 
     Comment, PushToken, ScheduledNotification, BreakingNews, 
-    NotificationTemplate
+    NotificationTemplate,ArticleNotificationHistory,UserNotification
 )
 
 
@@ -429,3 +429,53 @@ class NotificationTemplateAdmin(admin.ModelAdmin):
     def preview_body(self, obj):
         return obj.body_template[:100] + "..." if len(obj.body_template) > 100 else obj.body_template
     preview_body.short_description = 'Body Preview'
+
+
+@admin.register(UserNotification)
+class UserNotificationAdmin(admin.ModelAdmin):
+    list_display = [
+        'id', 'user', 'notification_type', 'title',
+        'is_read', 'sent_at', 'article_count'
+    ]
+    list_filter = ['notification_type', 'is_read', 'sent_at']
+    search_fields = ['user__username', 'title', 'body']
+    readonly_fields = ['sent_at', 'read_at']
+    date_hierarchy = 'sent_at'
+
+    def article_count(self, obj):
+        return obj.articles.count()
+
+    article_count.short_description = 'Articles'
+
+    fieldsets = (
+        ('Basic Info', {
+            'fields': ('user', 'notification_type', 'priority')
+        }),
+        ('Content', {
+            'fields': ('title', 'body', 'articles')
+        }),
+        ('Status', {
+            'fields': ('is_read', 'read_at', 'sent_at')
+        }),
+        ('Links', {
+            'fields': ('scheduled_notification', 'breaking_news')
+        }),
+        ('Metadata', {
+            'fields': ('metadata',),
+            'classes': ('collapse',)
+        })
+    )
+
+
+@admin.register(ArticleNotificationHistory)
+class ArticleNotificationHistoryAdmin(admin.ModelAdmin):
+    list_display = ['id', 'user', 'article_title', 'notification', 'sent_at']
+    list_filter = ['sent_at']
+    search_fields = ['user__username', 'article__title']
+    readonly_fields = ['sent_at']
+    date_hierarchy = 'sent_at'
+
+    def article_title(self, obj):
+        return obj.article.title[:50]
+
+    article_title.short_description = 'Article'

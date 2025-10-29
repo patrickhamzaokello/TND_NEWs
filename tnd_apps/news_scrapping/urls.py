@@ -3,7 +3,7 @@ from django.urls import path, include
 from rest_framework.routers import DefaultRouter
 from .views import NewsSourceViewSet, ArticleViewSet, UserProfileViewSet, CommentViewSet, GetOrCreatePushTokenView, \
     ListUserPushTokensView, DeactivatePushTokenView, PushTokenDetailView, DeactivatePushTokenByValueView, \
-    UpdateTokenUsageView, BulkDeactivateTokensView, CategoryViewSet
+    UpdateTokenUsageView, BulkDeactivateTokensView, CategoryViewSet,UserNotificationViewSet
 
 router = DefaultRouter()
 router.register(r'sources', NewsSourceViewSet)
@@ -11,10 +11,12 @@ router.register(r'articles', ArticleViewSet)
 router.register(r'profiles', UserProfileViewSet)
 router.register(r'comments', CommentViewSet)
 router.register(r'categories', CategoryViewSet)
-
+router.register(r'notifications', UserNotificationViewSet, basename='notification')
 
 urlpatterns = [
     path('', include(router.urls)),
+
+
     # Main push token endpoints
     path('api/push-tokens/', GetOrCreatePushTokenView.as_view(), name='get_or_create_push_token'),
     path('api/push-tokens/list/', ListUserPushTokensView.as_view(), name='list_user_push_tokens'),

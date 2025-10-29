@@ -214,10 +214,11 @@ def send_scheduled_notifications():
     call_command('send_scheduled_notifications')
 
 
-
 @shared_task
 def send_breaking_news_immediately(article_id=None, breaking_news_id=None):
     """Celery task for immediate breaking news delivery"""
+    from django.core.management import call_command
+
     if article_id:
         call_command('send_breaking_news', f'--article-id={article_id}')
     elif breaking_news_id:
@@ -279,6 +280,11 @@ def cleanup_old_scraping_logs(days_to_keep=30):
         'runs_deleted': deleted_runs[0]
     }
 
+@shared_task
+def cleanup_old_notifications():
+    """Periodic task to clean up old notifications"""
+    from django.core.management import call_command
+    call_command('cleanup_notification_history', '--days=30')
 
 @shared_task
 def health_check_task():

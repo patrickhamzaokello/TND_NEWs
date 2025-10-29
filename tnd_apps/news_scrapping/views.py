@@ -9,9 +9,9 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
-from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category
+from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, UserNotification
 from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleViewSerializer, UserProfileSerializer, \
-    CommentSerializer, CategorySerializer
+    CommentSerializer, CategorySerializer,NotificationStatsSerializer, UserNotificationSerializer
 from datetime import datetime, timedelta
 import re
 
@@ -762,3 +762,112 @@ class BulkDeactivateTokensView(views.APIView):
             'message': f'{updated_count} tokens deactivated successfully',
             'deactivated_count': updated_count
         }, status=status.HTTP_200_OK)
+
+
+class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
+    """
+    ViewSet for user notifications
+
+    Endpoints:
+    - GET /api/notifications/ - List all notifications for current user
+    - GET /api/notifications/unread/ - List unread notifications
+    - GET /api/notifications/stats/ - Get notification statistics
+    - POST /api/notifications/{id}/mark_read/ - Mark a notification as read
+    - POST /api/notifications/mark_all_read/ - Mark all as read
+    """
+
+    serializer_class = UserNotificationSerializer
+    permission_classes = [IsAuthenticated]
+
+    def get_queryset(self):
+        """Get notifications for the current user"""
+        return UserNotification.objects.filter(
+            user=self.request.user
+        ).prefetch_related('articles', 'articles__source', 'articles__category')
+
+    @action(detail=False, methods=['get'])
+    def unread(self, request):
+        """Get only unread notifications"""
+        queryset = self.get_queryset().filter(is_read=False)
+        page = self.paginate_queryset(queryset)
+
+        if page is not None:
+            serializer = self.get_serializer(page, many=True)
+            return self.get_paginated_response(serializer.data)
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def stats(self, request):
+        """Get notification statistics for the user"""
+        queryset = self.get_queryset()
+
+        unread_count = queryset.filter(is_read=False).count()
+        total_count = queryset.count()
+        latest = queryset.first()
+
+        data = {
+            'unread_count': unread_count,
+            'total_count': total_count,
+            'latest_notification': UserNotificationSerializer(latest).data if latest else None
+        }
+
+        serializer = NotificationStatsSerializer(data)
+        return Response(serializer.data)
+
+    @action(detail=True, methods=['post'])
+    def mark_read(self, request, pk=None):
+        """Mark a specific notification as read"""
+        notification = self.get_object()
+
+        if notification.user != request.user:
+            return Response(
+                {'error': 'You do not have permission to modify this notification'},
+                status=status.HTTP_403_FORBIDDEN
+            )
+
+        notification.mark_as_read()
+
+        return Response({
+            'status': 'success',
+            'message': 'Notification marked as read',
+            'notification': self.get_serializer(notification).data
+        })
+
+    @action(detail=False, methods=['post'])
+    def mark_all_read(self, request):
+        """Mark all notifications as read for the current user"""
+        from django.utils import timezone
+
+        updated_count = UserNotification.objects.filter(
+            user=request.user,
+            is_read=False
+        ).update(
+            is_read=True,
+            read_at=timezone.now()
+        )
+
+        return Response({
+            'status': 'success',
+            'message': f'Marked {updated_count} notifications as read',
+            'updated_count': updated_count
+        })
+
+    @action(detail=False, methods=['delete'])
+    def clear_old(self, request):
+        """Delete notifications older than 30 days"""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        cutoff_date = timezone.now() - timedelta(days=30)
+        deleted_count, _ = UserNotification.objects.filter(
+            user=request.user,
+            sent_at__lt=cutoff_date
+        ).delete()
+
+        return Response({
+            'status': 'success',
+            'message': f'Deleted {deleted_count} old notifications',
+            'deleted_count': deleted_count
+        })

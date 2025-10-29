@@ -31,4 +31,8 @@ celery_app.conf.beat_schedule = {
         'task': 'news_scrapping.tasks.check_for_news',
         'schedule': 300.0,  # Run every 5 minutes
     },
+    'cleanup-old-notifications': {
+        'task': 'news_scrapping.tasks.cleanup_old_notifications',
+        'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
+    },
 }

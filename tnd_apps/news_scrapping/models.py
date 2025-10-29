@@ -131,6 +131,16 @@ class Article(models.Model):
             
         super().save(*args, **kwargs)
 
+    def was_sent_to_user(self, user, days=7):
+        '''Check if this article was already sent to user in the last N days'''
+        from datetime import timedelta
+        cutoff = timezone.now() - timedelta(days=days)
+        return ArticleNotificationHistory.objects.filter(
+            user=user,
+            article=self,
+            sent_at__gte=cutoff
+        ).exists()
+
     def clean(self):
         if self.word_count < 0:
             raise ValidationError('Word count cannot be negative')
@@ -395,6 +405,107 @@ class BreakingNews(models.Model):
     class Meta:
         db_table = 'breaking_news'
         verbose_name_plural = 'Breaking News'
+
+
+class UserNotification(models.Model):
+    """Track all notifications sent to users"""
+
+    NOTIFICATION_TYPES = [
+        ('scheduled_digest', 'Scheduled Digest'),
+        ('breaking_news', 'Breaking News'),
+        ('category_update', 'Category Update'),
+    ]
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='notifications'
+    )
+
+    # Notification content
+    notification_type = models.CharField(max_length=20, choices=NOTIFICATION_TYPES)
+    title = models.CharField(max_length=200)
+    body = models.TextField()
+
+    # Related articles
+    articles = models.ManyToManyField('Article', related_name='user_notifications')
+
+    # Tracking
+    is_read = models.BooleanField(default=False)
+    read_at = models.DateTimeField(null=True, blank=True)
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    # Link to original notification objects
+    scheduled_notification = models.ForeignKey(
+        'ScheduledNotification',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sent_notifications'
+    )
+    breaking_news = models.ForeignKey(
+        'BreakingNews',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='sent_notifications'
+    )
+
+    # Metadata
+    priority = models.CharField(max_length=10, blank=True)
+    metadata = models.JSONField(default=dict, blank=True)
+
+    def mark_as_read(self):
+        """Mark notification as read"""
+        if not self.is_read:
+            self.is_read = True
+            self.read_at = timezone.now()
+            self.save(update_fields=['is_read', 'read_at'])
+
+    def __str__(self):
+        return f"{self.notification_type} for {self.user.username} - {self.title[:50]}"
+
+    class Meta:
+        db_table = 'user_notifications'
+        ordering = ['-sent_at']
+        indexes = [
+            models.Index(fields=['user', 'is_read', '-sent_at']),
+            models.Index(fields=['user', '-sent_at']),
+            models.Index(fields=['notification_type', '-sent_at']),
+        ]
+
+
+class ArticleNotificationHistory(models.Model):
+    """Track which articles have been sent to which users to avoid duplicates"""
+
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='article_notification_history'
+    )
+    article = models.ForeignKey(
+        'Article',
+        on_delete=models.CASCADE,
+        related_name='notification_history'
+    )
+    notification = models.ForeignKey(
+        UserNotification,
+        on_delete=models.CASCADE,
+        related_name='article_history'
+    )
+    sent_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'article_notification_history'
+        unique_together = ['user', 'article']
+        indexes = [
+            models.Index(fields=['user', 'article']),
+            models.Index(fields=['user', '-sent_at']),
+        ]
+
+    def __str__(self):
+        return f"{self.article.title[:30]} sent to {self.user.username}"
+
 
 class ScrapingRun(models.Model):
     """Model to track each scraping run"""

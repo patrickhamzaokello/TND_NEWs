@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import NewsSource, Comment, Category, Tag, Author, Article, UserProfile, ArticleView, PushToken
+from .models import NewsSource, Comment, Category, Tag, Author, Article, UserProfile, ArticleView, PushToken,UserNotification
 
 
 class NewsSourceSerializer(serializers.ModelSerializer):
@@ -136,3 +136,46 @@ class ArticleViewSerializer(serializers.ModelSerializer):
         model = ArticleView
         fields = ['id', 'user', 'article', 'viewed_at', 'duration_seconds']
 
+
+class NotificationArticleSerializer(serializers.ModelSerializer):
+    """Simplified article serializer for notifications"""
+
+    class Meta:
+        model = Article
+        fields = [
+            'id', 'title', 'slug', 'excerpt', 'featured_image_url',
+            'source', 'category', 'published_at', 'read_time_minutes'
+        ]
+        depth = 1  # Include nested source and category details
+
+
+class UserNotificationSerializer(serializers.ModelSerializer):
+    """Serializer for user notifications"""
+
+    articles = NotificationArticleSerializer(many=True, read_only=True)
+    article_count = serializers.SerializerMethodField()
+    time_ago = serializers.SerializerMethodField()
+
+    class Meta:
+        model = UserNotification
+        fields = [
+            'id', 'notification_type', 'title', 'body',
+            'articles', 'article_count', 'is_read', 'read_at',
+            'sent_at', 'time_ago', 'priority', 'metadata'
+        ]
+
+    def get_article_count(self, obj):
+        return obj.articles.count()
+
+    def get_time_ago(self, obj):
+        """Human-readable time since notification was sent"""
+        from django.utils.timesince import timesince
+        return timesince(obj.sent_at)
+
+
+class NotificationStatsSerializer(serializers.Serializer):
+    """Serializer for notification statistics"""
+
+    unread_count = serializers.IntegerField()
+    total_count = serializers.IntegerField()
+    latest_notification = UserNotificationSerializer(allow_null=True)
