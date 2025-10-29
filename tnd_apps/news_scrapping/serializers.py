@@ -140,13 +140,15 @@ class ArticleViewSerializer(serializers.ModelSerializer):
 class NotificationArticleSerializer(serializers.ModelSerializer):
     """Simplified article serializer for notifications"""
 
+    source_name = serializers.CharField(source='source.name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True)
+
     class Meta:
         model = Article
         fields = [
             'id', 'title', 'slug', 'excerpt', 'featured_image_url',
-            'source', 'category', 'published_at', 'read_time_minutes'
+            'source_name', 'category_name', 'published_at', 'read_time_minutes', 'url'
         ]
-        depth = 1  # Include nested source and category details
 
 
 class UserNotificationSerializer(serializers.ModelSerializer):
@@ -165,6 +167,7 @@ class UserNotificationSerializer(serializers.ModelSerializer):
         ]
 
     def get_article_count(self, obj):
+        """Get the count of articles in this notification"""
         return obj.articles.count()
 
     def get_time_ago(self, obj):
@@ -178,4 +181,4 @@ class NotificationStatsSerializer(serializers.Serializer):
 
     unread_count = serializers.IntegerField()
     total_count = serializers.IntegerField()
-    latest_notification = UserNotificationSerializer(allow_null=True)
+    latest_notification = serializers.DictField(allow_null=True, required=False)

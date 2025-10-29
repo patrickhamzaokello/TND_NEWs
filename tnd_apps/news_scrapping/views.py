@@ -783,7 +783,7 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         """Get notifications for the current user"""
         return UserNotification.objects.filter(
             user=self.request.user
-        ).prefetch_related('articles', 'articles__source', 'articles__category')
+        ).prefetch_related('articles', 'articles__source', 'articles__category').order_by('-sent_at')
 
     @action(detail=False, methods=['get'])
     def unread(self, request):
@@ -807,14 +807,19 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         total_count = queryset.count()
         latest = queryset.first()
 
+        # Serialize the latest notification separately before including in stats
+        latest_notification_data = None
+        if latest:
+            latest_notification_data = UserNotificationSerializer(latest).data
+
         data = {
             'unread_count': unread_count,
             'total_count': total_count,
-            'latest_notification': UserNotificationSerializer(latest).data if latest else None
+            'latest_notification': latest_notification_data
         }
 
-        serializer = NotificationStatsSerializer(data)
-        return Response(serializer.data)
+        # Return the data directly (already properly formatted)
+        return Response(data)
 
     @action(detail=True, methods=['post'])
     def mark_read(self, request, pk=None):

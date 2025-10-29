@@ -6,8 +6,6 @@
   <component name="ChangeListManager">
     <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/admin.py" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/management/commands/send_scheduled_notifications.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/management/commands/send_scheduled_notifications.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -136,7 +134,7 @@
       <workItem from="1760816198908" duration="57000" />
       <workItem from="1760817590688" duration="2088000" />
       <workItem from="1760853230486" duration="67000" />
-      <workItem from="1761772368695" duration="3342000" />
+      <workItem from="1761772368695" duration="4672000" />
     </task>
     <servers />
   </component>
