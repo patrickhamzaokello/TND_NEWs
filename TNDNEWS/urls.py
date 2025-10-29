@@ -11,12 +11,12 @@ from TNDNEWS import settings
 
 schema_view = get_schema_view(
     openapi.Info(
-        title="AEACBIO BACKEND",
+        title="TndNews Backend Project",
         default_version='v1',
-        description="Test description",
-        terms_of_service="https://backend.aeacbio.com/terms/",
-        contact=openapi.Contact(email="contact@aeacbio.com"),
-        license=openapi.License(name="Test License"),
+        description="Tndnews app aggregator",
+        terms_of_service="https://newsapi.mwonya.com/terms/",
+        contact=openapi.Contact(email="contact@mwonyanews.com"),
+        license=openapi.License(name="TNDNEWS License"),
     ),
     public=True,
     permission_classes=[permissions.AllowAny, ],
