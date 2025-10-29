@@ -13,10 +13,24 @@ logger = logging.getLogger(__name__)
 class Command(BaseCommand):
     help = 'Send scheduled news update notifications to users'
 
+    def add_arguments(self, parser):
+        parser.add_argument(
+            '--notification-id',
+            type=int,
+            help='Send a specific notification by ID'
+        )
+
     def handle(self, *args, **options):
+        # If specific notification ID provided, send only that one
+        if options.get('notification_id'):
+            self.send_specific_notification(options['notification_id'])
+            return
+
+        # Otherwise, send all due notifications
         logger.info("Starting scheduled notifications task")
         now = timezone.now()
 
+        logger.info(f"Current time: {now} (tz: {now.tzinfo})")
         due_notifications = ScheduledNotification.objects.filter(
             next_send_at__lte=now,
             is_active=True
@@ -25,6 +39,8 @@ class Command(BaseCommand):
         )
 
         logger.info(f"Found {due_notifications.count()} due notifications")
+        if not due_notifications.exists():
+            logger.warning("No due notifications found. Check next_send_at and is_active.")
 
         sent_count = 0
         error_count = 0
@@ -85,6 +101,63 @@ class Command(BaseCommand):
                 f"Sent {sent_count} notifications, {error_count} errors"
             )
         )
+
+    def send_specific_notification(self, notification_id):
+        """Send a specific notification immediately"""
+        try:
+            notification = ScheduledNotification.objects.get(id=notification_id)
+
+            if not notification.is_active:
+                logger.warning(f"Notification {notification_id} is not active")
+                self.stdout.write(self.style.WARNING(
+                    f"Notification {notification_id} is not active"
+                ))
+                return
+
+            logger.info(f"Sending specific notification {notification_id} for user {notification.user.username}")
+            now = timezone.now()
+
+            result = self.prepare_user_notification(notification)
+            if result:
+                messages, articles, base_message = result
+
+                logger.info(f"Prepared {len(messages)} messages with {len(articles)} articles")
+
+                success = self.send_push_notification_batch(messages)
+
+                if success:
+                    # Create notification record
+                    self.create_user_notification_record(
+                        notification,
+                        articles,
+                        base_message
+                    )
+
+                    # Update notification schedule
+                    notification.last_sent_at = now
+                    notification.calculate_next_send()
+                    notification.save()
+
+                    logger.info(f"Successfully sent notification {notification_id}")
+                    self.stdout.write(self.style.SUCCESS(
+                        f"✓ Sent notification to {notification.user.username} with {len(articles)} articles"
+                    ))
+                else:
+                    logger.error(f"Failed to send notification {notification_id}")
+                    self.stdout.write(self.style.ERROR(
+                        f"✗ Failed to send notification to {notification.user.username}"
+                    ))
+            else:
+                logger.warning(f"No articles available for notification {notification_id}")
+                self.stdout.write(self.style.WARNING(
+                    f"No new articles available for {notification.user.username}"
+                ))
+
+        except ScheduledNotification.DoesNotExist:
+            logger.error(f"Notification {notification_id} not found")
+            self.stdout.write(self.style.ERROR(
+                f"Notification {notification_id} not found"
+            ))
 
     def prepare_user_notification(self, notification):
         """Prepare notification messages for a user"""

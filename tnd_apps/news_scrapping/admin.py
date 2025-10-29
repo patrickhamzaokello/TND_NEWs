@@ -280,10 +280,14 @@ class ScrapingLogAdmin(admin.ModelAdmin):
 
 @admin.register(PushToken)
 class PushTokenAdmin(admin.ModelAdmin):
-    list_display = ['user', 'token_short', 'platform', 'is_active', 'last_used', 'created_at', 'notification_count']
+    list_display = [
+        'user', 'token_short', 'platform', 'is_active',
+        'last_used', 'created_at', 'notification_count'
+    ]
     list_filter = ['platform', 'is_active', 'created_at', 'last_used']
     search_fields = ['user__username', 'token', 'device_id']
     readonly_fields = ['created_at', 'updated_at', 'last_used']
+    actions = ['mark_inactive', 'mark_active', 'test_token']
 
     fieldsets = (
         ('Token Information', {
@@ -296,25 +300,94 @@ class PushTokenAdmin(admin.ModelAdmin):
 
     def token_short(self, obj):
         return obj.token[:20] + "..." if len(obj.token) > 20 else obj.token
+
     token_short.short_description = 'Token'
 
     def notification_count(self, obj):
-        # This would need to be implemented based on your notification tracking
-        return "—"
+        """Count notifications sent to this user"""
+        return obj.user.notifications.count()
+
     notification_count.short_description = 'Notifs Sent'
+
+    def mark_inactive(self, request, queryset):
+        """Mark selected tokens as inactive"""
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"Marked {updated} token(s) as inactive")
+
+    mark_inactive.short_description = "Mark as inactive"
+
+    def mark_active(self, request, queryset):
+        """Mark selected tokens as active"""
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"Marked {updated} token(s) as active")
+
+    mark_active.short_description = "Mark as active"
+
+    def test_token(self, request, queryset):
+        """Send a test notification to selected tokens"""
+        import requests
+        from django.contrib import messages
+
+        api_url = 'http://notification-service:4000/api/push-notification'
+        success_count = 0
+        error_count = 0
+
+        for token_obj in queryset:
+            if not token_obj.is_active:
+                messages.warning(request, f"Skipped inactive token for {token_obj.user.username}")
+                continue
+
+            try:
+                message = {
+                    'token': token_obj.token,
+                    'title': '🔔 Test Notification',
+                    'body': f'This is a test notification for {token_obj.user.username}',
+                    'metadata': {
+                        'userId': str(token_obj.user.id),
+                        'notificationType': 'test',
+                        'source': 'admin_panel'
+                    }
+                }
+
+                response = requests.post(
+                    api_url,
+                    json={'messages': [message]},
+                    headers={'Content-Type': 'application/json'},
+                    timeout=10
+                )
+
+                if response.status_code == 200:
+                    success_count += 1
+                else:
+                    error_count += 1
+                    messages.error(
+                        request,
+                        f"Failed to send to {token_obj.user.username}: {response.status_code}"
+                    )
+            except Exception as e:
+                error_count += 1
+                messages.error(request, f"Error sending to {token_obj.user.username}: {str(e)}")
+
+        if success_count > 0:
+            messages.success(request, f"Successfully sent {success_count} test notification(s)")
+        if error_count > 0:
+            messages.error(request, f"Failed to send {error_count} test notification(s)")
+
+    test_token.short_description = "Send test notification"
 
 
 @admin.register(ScheduledNotification)
 class ScheduledNotificationAdmin(admin.ModelAdmin):
     list_display = [
-        'user', 'frequency', 'scheduled_time', 'next_send_at', 
-        'is_active', 'last_sent_at', 'max_articles', 'created_at'
+        'user', 'frequency', 'scheduled_time', 'next_send_at',
+        'is_active', 'last_sent_at', 'max_articles', 'created_at',
+        'notification_count'
     ]
     list_filter = ['frequency', 'is_active', 'created_at', 'scheduled_time']
     search_fields = ['user__username']
     readonly_fields = ['next_send_at', 'last_sent_at', 'created_at', 'updated_at']
     filter_horizontal = ['include_categories', 'include_sources']
-    actions = ['send_now', 'enable_notifications', 'disable_notifications']
+    actions = ['send_now', 'enable_notifications', 'disable_notifications', 'recalculate_next_send']
 
     fieldsets = (
         ('User Settings', {
@@ -331,25 +404,70 @@ class ScheduledNotificationAdmin(admin.ModelAdmin):
         }),
     )
 
+    def notification_count(self, obj):
+        """Count of notifications sent through this schedule"""
+        return obj.sent_notifications.count()
+
+    notification_count.short_description = 'Sent Count'
+
     def send_now(self, request, queryset):
+        """Send selected notifications immediately"""
         from django.core.management import call_command
-        count = 0
+        from django.contrib import messages
+
+        success_count = 0
+        error_count = 0
+
         for notification in queryset:
-            # You'll need to implement this command or use a direct method
-            call_command('send_scheduled_notifications', f'--notification-id={notification.id}')
-            count += 1
-        self.message_user(request, f"Sent {count} notifications immediately")
+            if not notification.is_active:
+                messages.warning(
+                    request,
+                    f"Skipped inactive notification for {notification.user.username}"
+                )
+                continue
+
+            try:
+                call_command('send_scheduled_notifications', f'--notification-id={notification.id}')
+                success_count += 1
+            except Exception as e:
+                error_count += 1
+                messages.error(request, f"Error sending to {notification.user.username}: {str(e)}")
+
+        if success_count > 0:
+            messages.success(request, f"Successfully sent {success_count} notification(s)")
+        if error_count > 0:
+            messages.error(request, f"Failed to send {error_count} notification(s)")
+
     send_now.short_description = "Send selected notifications now"
 
     def enable_notifications(self, request, queryset):
-        queryset.update(is_active=True)
-        self.message_user(request, f"Enabled {queryset.count()} notifications")
+        """Enable selected notifications"""
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f"Enabled {updated} notification(s)")
+
     enable_notifications.short_description = "Enable selected notifications"
 
     def disable_notifications(self, request, queryset):
-        queryset.update(is_active=False)
-        self.message_user(request, f"Disabled {queryset.count()} notifications")
+        """Disable selected notifications"""
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f"Disabled {updated} notification(s)")
+
     disable_notifications.short_description = "Disable selected notifications"
+
+    def recalculate_next_send(self, request, queryset):
+        """Recalculate next send time for selected notifications"""
+        from django.utils import timezone
+
+        for notification in queryset:
+            notification.calculate_next_send()
+            notification.save()
+
+        self.message_user(
+            request,
+            f"Recalculated next send time for {queryset.count()} notification(s)"
+        )
+
+    recalculate_next_send.short_description = "Recalculate next send time"
 
 
 @admin.register(BreakingNews)
@@ -434,18 +552,31 @@ class NotificationTemplateAdmin(admin.ModelAdmin):
 @admin.register(UserNotification)
 class UserNotificationAdmin(admin.ModelAdmin):
     list_display = [
-        'id', 'user', 'notification_type', 'title',
-        'is_read', 'sent_at', 'article_count'
+        'id', 'user', 'notification_type', 'title_short',
+        'is_read', 'sent_at', 'article_count', 'time_since_sent'
     ]
-    list_filter = ['notification_type', 'is_read', 'sent_at']
+    list_filter = ['notification_type', 'is_read', 'sent_at', 'priority']
     search_fields = ['user__username', 'title', 'body']
     readonly_fields = ['sent_at', 'read_at']
     date_hierarchy = 'sent_at'
+    actions = ['mark_as_read', 'mark_as_unread', 'delete_old_notifications']
+    filter_horizontal = ['articles']
+
+    def title_short(self, obj):
+        return obj.title[:50] + "..." if len(obj.title) > 50 else obj.title
+
+    title_short.short_description = 'Title'
 
     def article_count(self, obj):
         return obj.articles.count()
 
     article_count.short_description = 'Articles'
+
+    def time_since_sent(self, obj):
+        from django.utils.timesince import timesince
+        return timesince(obj.sent_at) + " ago"
+
+    time_since_sent.short_description = 'Time Ago'
 
     fieldsets = (
         ('Basic Info', {
@@ -466,16 +597,68 @@ class UserNotificationAdmin(admin.ModelAdmin):
         })
     )
 
+    def mark_as_read(self, request, queryset):
+        """Mark selected notifications as read"""
+        from django.utils import timezone
+
+        updated = queryset.filter(is_read=False).update(
+            is_read=True,
+            read_at=timezone.now()
+        )
+        self.message_user(request, f"Marked {updated} notification(s) as read")
+
+    mark_as_read.short_description = "Mark as read"
+
+    def mark_as_unread(self, request, queryset):
+        """Mark selected notifications as unread"""
+        updated = queryset.update(is_read=False, read_at=None)
+        self.message_user(request, f"Marked {updated} notification(s) as unread")
+
+    mark_as_unread.short_description = "Mark as unread"
+
+    def delete_old_notifications(self, request, queryset):
+        """Delete notifications older than 30 days"""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        cutoff_date = timezone.now() - timedelta(days=30)
+        old_notifications = queryset.filter(sent_at__lt=cutoff_date)
+        count = old_notifications.count()
+        old_notifications.delete()
+
+        self.message_user(request, f"Deleted {count} old notification(s)")
+
+    delete_old_notifications.short_description = "Delete notifications >30 days old"
 
 @admin.register(ArticleNotificationHistory)
 class ArticleNotificationHistoryAdmin(admin.ModelAdmin):
-    list_display = ['id', 'user', 'article_title', 'notification', 'sent_at']
-    list_filter = ['sent_at']
+    list_display = ['id', 'user', 'article_title', 'notification_type', 'sent_at']
+    list_filter = ['sent_at', 'notification__notification_type']
     search_fields = ['user__username', 'article__title']
     readonly_fields = ['sent_at']
     date_hierarchy = 'sent_at'
+    actions = ['delete_old_history']
 
     def article_title(self, obj):
-        return obj.article.title[:50]
+        return obj.article.title[:50] + "..." if len(obj.article.title) > 50 else obj.article.title
 
     article_title.short_description = 'Article'
+
+    def notification_type(self, obj):
+        return obj.notification.notification_type if obj.notification else "—"
+
+    notification_type.short_description = 'Type'
+
+    def delete_old_history(self, request, queryset):
+        """Delete history entries older than 30 days"""
+        from django.utils import timezone
+        from datetime import timedelta
+
+        cutoff_date = timezone.now() - timedelta(days=30)
+        old_history = queryset.filter(sent_at__lt=cutoff_date)
+        count = old_history.count()
+        old_history.delete()
+
+        self.message_user(request, f"Deleted {count} old history entry(ies)")
+
+    delete_old_history.short_description = "Delete history >30 days old"
