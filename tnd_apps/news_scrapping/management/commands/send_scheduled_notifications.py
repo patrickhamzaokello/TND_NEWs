@@ -284,7 +284,7 @@ class Command(BaseCommand):
             bodies = [
                 f"{len(articles)} fresh stories from {source_names} — don’t miss out!",
                 f"{len(articles)} must-reads from {source_names} — tap to CatchUp!",
-                f"{Latest from {source_names} — all in one place!"
+                f"Latest from {source_names} — all in one place!"
             ]
             return {
                 "title": random.choice(titles),
