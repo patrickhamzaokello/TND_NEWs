@@ -6,20 +6,63 @@ from .models import Article
 @receiver(post_save, sender=Article)
 def detect_breaking_news(sender, instance, created, **kwargs):
     """Automatically detect potential breaking news"""
-    if created and instance.category and instance.category.name.lower() in [
-        'breaking', 'urgent', 'alert', 'latest'
-    ]:
-        # Check if this looks like breaking news
-        is_breaking = (
-            instance.title.lower().startswith(('breaking:', 'urgent:', 'alert:')) or
-            'breaking' in instance.title.lower() or
-            instance.priority == 'high'
-        )
+    if not created:
+        return
+    
+    # Expanded category checks
+    breaking_categories = [
+        'breaking', 'urgent', 'alert', 'latest', 'developing',
+        'live', 'just in', 'update', 'flash', 'bulletin'
+    ]
+    
+    category_match = (
+        instance.category and 
+        instance.category.name.lower() in breaking_categories
+    )
+    
+    # Expanded title pattern checks
+    breaking_prefixes = [
+        'breaking:', 'urgent:', 'alert:', 'developing:', 
+        'just in:', 'live:', 'update:', 'flash:', 'exclusive:'
+    ]
+    
+    breaking_keywords = [
+        'breaking', 'urgent', 'just in', 'developing story',
+        'live update', 'flash', 'alert', 'exclusive', 'confirmed'
+    ]
+    
+    title_lower = instance.title.lower()
+    
+    has_breaking_prefix = any(
+        title_lower.startswith(prefix) for prefix in breaking_prefixes
+    )
+    
+    has_breaking_keyword = any(
+        keyword in title_lower for keyword in breaking_keywords
+    )
+    
+    # Check article metadata
+    has_high_priority = instance.priority == 'high'
+    
+    # Determine if breaking news
+    is_breaking = (
+        category_match or
+        has_breaking_prefix or
+        (has_breaking_keyword and has_high_priority)
+    )
+    
+    if is_breaking:
+        from .models import BreakingNews
         
-        if is_breaking:
-            priority = 'high' if instance.priority == 'high' else 'medium'
-            from .models import BreakingNews
-            BreakingNews.objects.create(
-                article=instance,
-                priority=priority
-            )
+        # Preserve original priority or infer from signals
+        if has_high_priority or has_breaking_prefix:
+            priority = 'high'
+        elif has_breaking_keyword:
+            priority = 'medium'
+        else:
+            priority = 'low'
+        
+        BreakingNews.objects.create(
+            article=instance,
+            priority=priority
+        )
