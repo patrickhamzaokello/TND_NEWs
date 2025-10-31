@@ -6,6 +6,7 @@ from tnd_apps.news_scrapping.models import (
 )
 from datetime import timedelta
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -259,16 +260,37 @@ class Command(BaseCommand):
 
         if len(articles) == 1:
             article = articles[0]
+            titles = [
+                f"Latest from {article.source.name}",
+                f"Featured Story — {article.source.name}",
+                f"Today's Spotlight via {article.source.name}"
+            ]
+            bodies = [
+                f"{article.title}\n\nTap to read more",
+                f"{article.title} — tap to read the details.",
+                f"{article.title}\n\nStay informed with CatchUp."
+            ]
             return {
-                "title": f"🔥 Hot from {article.source.name}",
-                "body": f"{article.title} — tap to get the full story!",
+                "title": random.choice(titles),
+                "body": random.choice(bodies),
             }
         else:
             source_names = ', '.join(set(article.source.name for article in articles[:3]))
+            titles = [
+                "News Highlights",
+                "Today’s Top Stories",
+                "News Update"
+            ]
+            bodies = [
+                f"{len(articles)} fresh stories from {source_names} — don’t miss out!",
+                f"{len(articles)} must-reads from {source_names} — tap to CatchUp!",
+                f"{Latest from {source_names} — all in one place!"
+            ]
             return {
-                "title": "📢 Your Daily News Fix",
-                "body": f"{len(articles)} must-read stories from {source_names} — don't miss out!",
+                "title": random.choice(titles),
+                "body": random.choice(bodies),
             }
+
 
     def create_user_notification_record(self, scheduled_notification, articles, base_message):
         """Create UserNotification record and history entries"""
