@@ -6,6 +6,7 @@ from tnd_apps.news_scrapping.models import (
 )
 from datetime import timedelta
 import logging
+import random
 
 logger = logging.getLogger(__name__)
 
@@ -59,7 +60,7 @@ class Command(BaseCommand):
 
     def send_all_breaking_news(self, dry_run=False):
         """Send all unsent breaking news"""
-        unsent_news = BreakingNews.objects.filter(is_sent=False)
+        unsent_news = BreakingNews.objects.filter(is_sent=False).order_by('-priority', '-created_at')
         self.stdout.write(f"Found {unsent_news.count()} unsent breaking news items")
 
         for breaking_news in unsent_news:
@@ -84,28 +85,21 @@ class Command(BaseCommand):
         base_query = User.objects.filter(
             push_tokens__is_active=True
         ).exclude(
-            id__in=already_notified_users  # Exclude users who already got this article
+            id__in=already_notified_users
         ).distinct()
 
-        # Apply targeting filters
+        # Apply targeting filters - only if explicitly set, otherwise send to ALL users
         if breaking_news.target_categories.exists():
             base_query = base_query.filter(
                 user_profiles__preferred_categories__in=breaking_news.target_categories.all()
             )
-        elif article.category:
-            base_query = base_query.filter(
-                user_profiles__preferred_categories=article.category
-            )
-
+        
         if breaking_news.target_sources.exists():
             base_query = base_query.filter(
                 user_profiles__followed_sources__in=breaking_news.target_sources.all()
             )
-        elif article.source:
-            base_query = base_query.filter(
-                user_profiles__followed_sources=article.source
-            )
 
+        # If no targeting is set, send to all active users (breaking news is for everyone)
         return base_query
 
     def send_breaking_news_notification(self, breaking_news, dry_run=False):
@@ -177,19 +171,37 @@ class Command(BaseCommand):
         return messages
 
     def create_breaking_news_message(self, article, priority):
-        """Create the breaking news notification message"""
-        priority_icons = {
-            'low': '📢',
-            'medium': '🚨',
-            'high': '🔥',
-            'critical': '⚡'
-        }
+        """Create the breaking news notification message with Apple-style templates"""
+        
+        # Priority-based title templates
+        if priority in ['high', 'critical']:
+            titles = [
+                f"Breaking: {article.source.name}",
+                f"⚡ {article.source.name}",
+                "Breaking News",
+            ]
+        elif priority == 'medium':
+            titles = [
+                f"Latest from {article.source.name}",
+                f"Developing: {article.source.name}",
+                "News Alert",
+            ]
+        else:
+            titles = [
+                f"From {article.source.name}",
+                "News Update",
+                f"{article.source.name}",
+            ]
 
-        icon = priority_icons.get(priority, '📢')
+        # Body templates - keep it clean
+        bodies = [
+            article.title,
+            f"{article.title}\n\nTap to read",
+        ]
 
         return {
-            'title': f'{icon} Breaking News: {article.source.name}',
-            'body': article.title,
+            'title': random.choice(titles),
+            'body': random.choice(bodies),
         }
 
     def create_breaking_news_record(self, user, article, breaking_news):
@@ -244,6 +256,7 @@ class Command(BaseCommand):
 
                 if response.status_code == 200:
                     success_count += len(batch)
+                    logger.info(f"Successfully sent batch {i//batch_size + 1} ({len(batch)} messages)")
                 else:
                     logger.error(f"API error {response.status_code}: {response.text}")
 
