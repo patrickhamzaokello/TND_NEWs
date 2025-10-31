@@ -41,23 +41,20 @@ def detect_breaking_news(sender, instance, created, **kwargs):
         keyword in title_lower for keyword in breaking_keywords
     )
     
-    # Check article metadata
-    has_high_priority = instance.priority == 'high'
-    
     # Determine if breaking news
     is_breaking = (
         category_match or
         has_breaking_prefix or
-        (has_breaking_keyword and has_high_priority)
+        has_breaking_keyword
     )
     
     if is_breaking:
         from .models import BreakingNews
         
-        # Preserve original priority or infer from signals
-        if has_high_priority or has_breaking_prefix:
+        # Assign priority based on signals
+        if has_breaking_prefix or (category_match and 'breaking' in instance.category.name.lower()):
             priority = 'high'
-        elif has_breaking_keyword:
+        elif category_match or has_breaking_keyword:
             priority = 'medium'
         else:
             priority = 'low'
