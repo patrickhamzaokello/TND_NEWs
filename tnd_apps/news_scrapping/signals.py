@@ -17,8 +17,9 @@ def detect_breaking_news(sender, instance, created, **kwargs):
         )
         
         if is_breaking:
+            priority = 'high' if instance.priority == 'high' else 'medium'
             from .models import BreakingNews
             BreakingNews.objects.create(
                 article=instance,
-                priority='medium'
+                priority=priority
             )
