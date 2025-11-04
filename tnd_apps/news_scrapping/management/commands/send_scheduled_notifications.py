@@ -261,14 +261,10 @@ class Command(BaseCommand):
         if len(articles) == 1:
             article = articles[0]
             titles = [
-                f"Latest from {article.source.name}",
                 f"Featured Story — {article.source.name}",
-                f"Today's Spotlight via {article.source.name}"
             ]
             bodies = [
-                f"{article.title}\n\nTap to read more",
                 f"{article.title} — tap to read the details.",
-                f"{article.title}\n\nStay informed with CatchUp."
             ]
             return {
                 "title": random.choice(titles),
@@ -278,8 +274,6 @@ class Command(BaseCommand):
             source_names = ', '.join(set(article.source.name for article in articles[:3]))
             titles = [
                 "News Highlights",
-                "Today’s Top Stories",
-                "News Update"
             ]
             bodies = [
                 f"{len(articles)} fresh stories from {source_names} — don’t miss out!",
