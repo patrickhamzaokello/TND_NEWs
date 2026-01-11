@@ -366,6 +366,7 @@ class ExclusiveCoUgScraper:
 
                 # Get page content
                 response = self.session.get(page_url, timeout=30)
+                print("okello")
                 response.raise_for_status()
 
                 soup = BeautifulSoup(response.content, 'html.parser')
