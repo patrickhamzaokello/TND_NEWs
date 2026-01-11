@@ -65,7 +65,7 @@ class ExclusiveCoUgScraper:
     def get_or_create_category(self, category_name):
         """Get or create a category with proper slug handling"""
         if not category_name or not category_name.strip():
-            return None
+            category_name =  "default_exclusive_bizz"
 
         category_name = category_name.strip()
         category_slug = slugify(category_name)
@@ -79,7 +79,7 @@ class ExclusiveCoUgScraper:
     def get_or_create_tag(self, tag_name):
         """Get or create a tag with proper slug handling"""
         if not tag_name or not tag_name.strip():
-            return None
+            tag_name =  "default_exclusive_bizz_tag"
 
         tag_name = tag_name.strip()
         tag_slug = slugify(tag_name)
@@ -93,7 +93,7 @@ class ExclusiveCoUgScraper:
     def get_or_create_author(self, author_name, profile_url=""):
         """Get or create an author"""
         if not author_name or not author_name.strip():
-            return None
+            author_name =  "exclusive_bizz_author"
 
         author_name = author_name.strip()
         author, created = Author.objects.get_or_create(
