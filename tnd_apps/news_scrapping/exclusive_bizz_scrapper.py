@@ -28,7 +28,7 @@ class ExclusiveCoUgScraper:
             self.source = NewsSource.objects.create(
                 name=source_name,
                 base_url="https://exclusive.co.ug",
-                news_url="https://exclusive.co.ug"
+                news_url="https://exclusive.co.ug/category/news/"
             )
 
         self.headers = {
