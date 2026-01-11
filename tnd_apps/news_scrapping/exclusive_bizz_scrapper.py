@@ -455,6 +455,10 @@ class ExclusiveCoUgScraper:
                             article_data.get('category')
                         )
 
+                        author = self.get_or_create_author(
+                            article_data.get('author'),
+                        )
+
                         # Create article object
                         article = Article(
                             external_id=article_data.get('external_id', ''),
@@ -463,6 +467,7 @@ class ExclusiveCoUgScraper:
                             featured_image_url=article_data.get('featured_image', ''),
                             source=self.source,
                             category=category,
+                            author=author,
                             published_time_str=article_data.get('published_date', ''),
                         )
 
