@@ -13,6 +13,7 @@ class ExclusiveCoUgScraper:
     """
     Enhanced scraper for Exclusive.co.ug news website
 
+    Improvements over DokoloPost scraper:
     - Better error handling with retry logic
     - More efficient content extraction
     - Automatic excerpt generation from article body
@@ -242,7 +243,8 @@ class ExclusiveCoUgScraper:
                 response = self.session.get(article_url, timeout=30)
                 response.raise_for_status()
 
-                soup = BeautifulSoup(response.content, 'html.parser')
+                # Use response.text instead of response.content for proper decoding
+                soup = BeautifulSoup(response.text, 'html.parser')
                 article_data = {}
 
                 # Extract title
@@ -366,11 +368,10 @@ class ExclusiveCoUgScraper:
 
                 # Get page content
                 response = self.session.get(page_url, timeout=30)
-                print(page_url)
-                print(response.content)
                 response.raise_for_status()
 
-                soup = BeautifulSoup(response.content, 'html.parser')
+                # Use response.text for proper encoding/decoding
+                soup = BeautifulSoup(response.text, 'html.parser')
 
                 # Find all article containers using the Elementor structure
                 article_containers = soup.select('article.elementor-post.elementor-grid-item')
