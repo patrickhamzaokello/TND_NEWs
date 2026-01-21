@@ -1,17 +1,17 @@
-
 # Create your views here.
-from rest_framework import serializers, viewsets, status,generics, status, views
+from rest_framework import serializers, viewsets, status, generics, status, views
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import IsAuthenticated
-from django.db.models import Count, Q
+from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value
+from django.db.models.functions import Greatest
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
 from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, UserNotification
 from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleViewSerializer, UserProfileSerializer, \
-    CommentSerializer, CategorySerializer,NotificationStatsSerializer, UserNotificationSerializer
+    CommentSerializer, CategorySerializer, NotificationStatsSerializer, UserNotificationSerializer
 from datetime import datetime, timedelta
 import re
 
@@ -20,6 +20,7 @@ from .serializers import (
     PushTokenCreateSerializer,
     TokenUpdateUsageSerializer
 )
+
 
 class CategoriesPagination(PageNumberPagination):
     page_size = 30
@@ -39,6 +40,7 @@ class CategoriesPagination(PageNumberPagination):
             'results': data
         })
 
+
 class ArticleSearchPagination(PageNumberPagination):
     page_size = 10
     page_size_query_param = 'page_size'
@@ -56,6 +58,8 @@ class ArticleSearchPagination(PageNumberPagination):
             'current_page': current_page,
             'results': data
         })
+
+
 # Views
 class NewsSourceViewSet(viewsets.ModelViewSet):
     queryset = NewsSource.objects.filter(is_active=True)
@@ -75,6 +79,7 @@ class NewsSourceViewSet(viewsets.ModelViewSet):
         profile = UserProfile.objects.get(user=request.user)
         profile.followed_sources.remove(source)
         return Response({'status': 'unfollowed'}, status=status.HTTP_200_OK)
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
@@ -96,6 +101,7 @@ class CategoryViewSet(viewsets.ModelViewSet):
         profile.preferred_categories.remove(category)
         return Response({'status': 'unsubscribed'}, status=status.HTTP_200_OK)
 
+
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
@@ -108,6 +114,159 @@ class ArticleViewSet(viewsets.ModelViewSet):
         if profile and profile.followed_sources.exists():
             return self.queryset.filter(source__in=profile.followed_sources.all())
         return self.queryset.filter(source__is_active=True)
+
+    def _calculate_article_score(self, queryset, recency_weight=0.4, engagement_weight=0.3,
+                                 quality_weight=0.3, time_window_hours=48):
+        """
+        Calculate a comprehensive score for articles based on multiple factors.
+
+        Scoring factors:
+        - Recency: How fresh is the article (exponential decay)
+        - Engagement: View count with time normalization
+        - Quality: Has full content, word count, read time
+
+        Args:
+            queryset: Article queryset to score
+            recency_weight: Weight for freshness (0-1)
+            engagement_weight: Weight for user engagement (0-1)
+            quality_weight: Weight for content quality (0-1)
+            time_window_hours: Hours to consider for recent articles
+        """
+        now = timezone.now()
+        time_threshold = now - timedelta(hours=time_window_hours)
+
+        # Calculate hours since publication (for recency scoring)
+        queryset = queryset.annotate(
+            hours_old=Case(
+                When(
+                    published_at__isnull=False,
+                    then=(
+                            (now - F('published_at')).total_seconds() / 3600.0
+                    )
+                ),
+                default=(
+                        (now - F('scraped_at')).total_seconds() / 3600.0
+                ),
+                output_field=FloatField()
+            )
+        )
+
+        # Recency score: Exponential decay (newer = higher score)
+        # Articles within time_window get max score, then decay
+        queryset = queryset.annotate(
+            recency_score=Case(
+                When(
+                    hours_old__lte=6,  # Fresh articles (< 6 hours)
+                    then=Value(100.0)
+                ),
+                When(
+                    hours_old__lte=12,  # Recent articles (6-12 hours)
+                    then=Value(80.0)
+                ),
+                When(
+                    hours_old__lte=24,  # Today's articles (12-24 hours)
+                    then=Value(60.0)
+                ),
+                When(
+                    hours_old__lte=48,  # Yesterday's articles (24-48 hours)
+                    then=Value(40.0)
+                ),
+                When(
+                    hours_old__lte=72,  # 2-3 days old
+                    then=Value(20.0)
+                ),
+                default=Value(10.0),  # Older articles
+                output_field=FloatField()
+            )
+        )
+
+        # Engagement score: Views with time normalization
+        # Recent views matter more than old views
+        queryset = queryset.annotate(
+            recent_view_count=Count(
+                'views',
+                filter=Q(views__viewed_at__gte=time_threshold)
+            ),
+            total_view_count=Count('views'),
+            # Normalize by article age to prevent old popular articles from dominating
+            engagement_score=Case(
+                When(
+                    hours_old__lte=24,
+                    then=F('recent_view_count') * 10  # Boost recent articles
+                ),
+                When(
+                    hours_old__lte=48,
+                    then=F('recent_view_count') * 5
+                ),
+                default=F('recent_view_count') * 2,
+                output_field=FloatField()
+            )
+        )
+
+        # Quality score: Content completeness and depth
+        queryset = queryset.annotate(
+            quality_score=Case(
+                When(
+                    has_full_content=True,
+                    word_count__gte=800,  # Long-form content
+                    then=Value(100.0)
+                ),
+                When(
+                    has_full_content=True,
+                    word_count__gte=400,  # Medium-form content
+                    then=Value(70.0)
+                ),
+                When(
+                    has_full_content=True,
+                    then=Value(50.0)
+                ),
+                When(
+                    word_count__gte=200,  # At least some content
+                    then=Value(30.0)
+                ),
+                default=Value(10.0),
+                output_field=FloatField()
+            )
+        )
+
+        # Combined score with weights
+        queryset = queryset.annotate(
+            article_score=(
+                    (F('recency_score') * recency_weight) +
+                    (F('engagement_score') * engagement_weight) +
+                    (F('quality_score') * quality_weight)
+            )
+        )
+
+        return queryset
+
+    def _get_excluded_article_ids(self, request):
+        """
+        Get IDs of articles that should be excluded from results.
+        This prevents the top story from appearing in other endpoints.
+        """
+        excluded_ids = []
+
+        # Check if there's a top story to exclude
+        exclude_top = request.query_params.get('exclude_top_story', 'true').lower() == 'true'
+
+        if exclude_top:
+            top_story = self.get_queryset().filter(
+                has_full_content=True
+            ).order_by('-scraped_at').first()
+
+            if top_story:
+                excluded_ids.append(top_story.id)
+
+        # Allow client to pass additional IDs to exclude
+        additional_excludes = request.query_params.get('exclude_ids', '')
+        if additional_excludes:
+            try:
+                excluded_ids.extend([int(x) for x in additional_excludes.split(',') if x.strip()])
+            except ValueError:
+                pass
+
+        return excluded_ids
 
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -286,6 +445,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def search_suggestions(self, request):
         """
         Get search suggestions based on partial query.
+        Prioritizes fresh content and trending topics.
 
         GET /api/articles/search_suggestions/?q=partial_term&limit=10
         """
@@ -297,17 +457,21 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
         suggestions = []
 
-        # Get suggestions from article titles
+        # Prioritize recent articles (last 7 days)
+        recent_threshold = timezone.now() - timedelta(days=7)
+
+        # Get suggestions from recent article titles
         title_suggestions = Article.objects.filter(
-            title__icontains=query
-        ).values_list('title', flat=True).distinct()[:limit // 2]
+            title__icontains=query,
+            scraped_at__gte=recent_threshold
+        ).order_by('-scraped_at').values_list('title', flat=True).distinct()[:limit // 2]
 
         # Get suggestions from categories
         category_suggestions = Category.objects.filter(
             name__icontains=query
         ).values_list('name', flat=True).distinct()[:limit // 4]
 
-        # Get suggestions from sources
+        # Get suggestions from active sources
         source_suggestions = NewsSource.objects.filter(
             name__icontains=query,
             is_active=True
@@ -320,32 +484,197 @@ class ArticleViewSet(viewsets.ModelViewSet):
         return Response({
             'suggestions': suggestions[:limit]
         })
+
     @action(detail=False, methods=['get'])
     def top_story(self, request):
-        queryset = self.get_queryset().filter(has_full_content=True).order_by('-scraped_at')[:1]
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        """
+        Get the single most important story right now.
+        Prioritizes breaking news and very recent articles with engagement.
+
+        GET /api/articles/top_story/
+        """
+        # Get articles from last 24 hours with full content
+        time_threshold = timezone.now() - timedelta(hours=24)
+
+        queryset = self.get_queryset().filter(
+            has_full_content=True,
+            scraped_at__gte=time_threshold
+        )
+
+        # Score with heavy recency bias for top story
+        queryset = self._calculate_article_score(
+            queryset,
+            recency_weight=0.6,  # Higher recency weight for top story
+            engagement_weight=0.3,
+            quality_weight=0.1,
+            time_window_hours=24
+        )
+
+        # Get top scored article
+        top_story = queryset.order_by('-article_score').first()
+
+        # Fallback to most recent if no scored articles
+        if not top_story:
+            top_story = self.get_queryset().filter(
+                has_full_content=True
+            ).order_by('-scraped_at').first()
+
+        if top_story:
+            serializer = self.get_serializer([top_story], many=True)
+            return Response(serializer.data)
+
+        return Response([])
 
     @action(detail=False, methods=['get'])
     def featured(self, request):
-        queryset = self.get_queryset().filter(has_full_content=True).annotate(
-            view_count=Count('views')
-        ).order_by('-view_count', '-scraped_at')[:5]
+        """
+        Get featured articles based on comprehensive scoring.
+        Balances freshness, engagement, and quality.
+        Excludes the top story.
+
+        GET /api/articles/featured/?exclude_top_story=true&exclude_ids=1,2,3
+        """
+        # Get excluded IDs (including top story)
+        excluded_ids = self._get_excluded_article_ids(request)
+
+        # Get articles from last 72 hours with full content
+        time_threshold = timezone.now() - timedelta(hours=72)
+
+        queryset = self.get_queryset().filter(
+            has_full_content=True,
+            scraped_at__gte=time_threshold
+        ).exclude(id__in=excluded_ids)
+
+        # Calculate comprehensive score
+        queryset = self._calculate_article_score(
+            queryset,
+            recency_weight=0.4,
+            engagement_weight=0.3,
+            quality_weight=0.3,
+            time_window_hours=48
+        )
+
+        # Get top 5 featured articles
+        queryset = queryset.order_by('-article_score', '-scraped_at')[:5]
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def top_reads(self, request):
-        time_threshold = timezone.now() - timedelta(days=7)
-        queryset = self.get_queryset().annotate(
-            view_count=Count('views')
-        ).filter(views__viewed_at__gte=time_threshold).order_by('-view_count')[:10]
+        """
+        Get most-read articles from the past week.
+        Focuses on engagement with recency consideration.
+        Excludes top story and featured articles.
+
+        GET /api/articles/top_reads/?days=7&exclude_top_story=true
+        """
+        # Get excluded IDs
+        excluded_ids = self._get_excluded_article_ids(request)
+
+        # Get time window (default 7 days)
+        days = int(request.query_params.get('days', 7))
+        time_threshold = timezone.now() - timedelta(days=days)
+
+        queryset = self.get_queryset().filter(
+            scraped_at__gte=time_threshold
+        ).exclude(id__in=excluded_ids)
+
+        # Calculate score with higher engagement weight
+        queryset = self._calculate_article_score(
+            queryset,
+            recency_weight=0.2,
+            engagement_weight=0.6,  # Emphasize engagement for "top reads"
+            quality_weight=0.2,
+            time_window_hours=days * 24
+        )
+
+        # Order by engagement score primarily
+        queryset = queryset.order_by('-engagement_score', '-article_score')[:10]
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
     def latest(self, request):
-        queryset = self.get_queryset().order_by('-scraped_at')[:20]
+        """
+        Get the latest articles, freshly scraped.
+        Pure chronological order with quality filter.
+        Excludes top story.
+
+        GET /api/articles/latest/?hours=24&exclude_top_story=true
+        """
+        # Get excluded IDs
+        excluded_ids = self._get_excluded_article_ids(request)
+
+        # Optional time filter (default: all recent)
+        hours = request.query_params.get('hours')
+        queryset = self.get_queryset()
+
+        if hours:
+            try:
+                time_threshold = timezone.now() - timedelta(hours=int(hours))
+                queryset = queryset.filter(scraped_at__gte=time_threshold)
+            except (ValueError, TypeError):
+                pass
+
+        # Exclude already featured articles
+        queryset = queryset.exclude(id__in=excluded_ids)
+
+        # Prefer articles with full content, but don't require it
+        queryset = queryset.annotate(
+            has_content=Case(
+                When(has_full_content=True, then=Value(1)),
+                default=Value(0),
+                output_field=IntegerField()
+            )
+        ).order_by('-has_content', '-scraped_at')[:20]
+
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def trending(self, request):
+        """
+        Get trending articles based on recent engagement velocity.
+        Articles gaining views quickly.
+
+        GET /api/articles/trending/
+        """
+        # Get excluded IDs
+        excluded_ids = self._get_excluded_article_ids(request)
+
+        # Look at last 24 hours
+        time_threshold = timezone.now() - timedelta(hours=24)
+
+        queryset = self.get_queryset().filter(
+            scraped_at__gte=time_threshold
+        ).exclude(id__in=excluded_ids)
+
+        # Calculate trending score: recent views relative to article age
+        queryset = queryset.annotate(
+            recent_views=Count('views', filter=Q(views__viewed_at__gte=time_threshold)),
+            hours_since_published=Case(
+                When(
+                    published_at__isnull=False,
+                    then=(timezone.now() - F('published_at')).total_seconds() / 3600.0
+                ),
+                default=(timezone.now() - F('scraped_at')).total_seconds() / 3600.0,
+                output_field=FloatField()
+            ),
+            # Velocity: views per hour (with minimum to avoid division issues)
+            trending_score=Case(
+                When(
+                    hours_since_published__gt=0,
+                    then=F('recent_views') / Greatest(F('hours_since_published'), Value(1.0))
+                ),
+                default=F('recent_views'),
+                output_field=FloatField()
+            )
+        ).filter(
+            recent_views__gt=0  # Must have at least some views
+        ).order_by('-trending_score', '-recent_views')[:10]
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -360,7 +689,6 @@ class ArticleViewSet(viewsets.ModelViewSet):
         serializer = ArticleViewSerializer(view)
         return Response(serializer.data, status=status.HTTP_201_CREATED)
 
-    # ✅ Batch fetch endpoint
     @action(detail=False, methods=['post'])
     def batch(self, request):
         """
@@ -382,10 +710,34 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     @action(detail=True, methods=['get'])
     def related(self, request, pk=None):
+        """
+        Get related articles based on category, tags, and source.
+        Prioritizes fresh, related content.
+        """
         article = self.get_object()
+
+        # Look for related articles from last 7 days
+        time_threshold = timezone.now() - timedelta(days=7)
+
         queryset = self.get_queryset().filter(
-            Q(category=article.category) | Q(tags__in=article.tags.all()) | Q(source=article.source)
-        ).exclude(id=article.id).distinct()[:5]
+            scraped_at__gte=time_threshold
+        ).filter(
+            Q(category=article.category) |
+            Q(tags__in=article.tags.all()) |
+            Q(source=article.source)
+        ).exclude(id=article.id).distinct()
+
+        # Score related articles
+        queryset = self._calculate_article_score(
+            queryset,
+            recency_weight=0.5,
+            engagement_weight=0.3,
+            quality_weight=0.2,
+            time_window_hours=168  # 7 days
+        )
+
+        queryset = queryset.order_by('-article_score')[:5]
+
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
@@ -393,9 +745,14 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def comments(self, request, pk=None):
         article = self.get_object()
         # Fetch top-level comments only (parent__isnull=True)
-        comments = Comment.objects.filter(article=article, parent__isnull=True, is_approved=True).select_related('user').prefetch_related('replies')
+        comments = Comment.objects.filter(
+            article=article,
+            parent__isnull=True,
+            is_approved=True
+        ).select_related('user').prefetch_related('replies')
         serializer = CommentSerializer(comments, many=True, context={'request': request})
         return Response(serializer.data)
+
 
 class UserProfileViewSet(viewsets.ModelViewSet):
     queryset = UserProfile.objects.all()
