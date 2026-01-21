@@ -127,8 +127,8 @@ DATABASES = {
     }
 }
 
-CELERY_BROKER_URL = f"redis://:{config('REDIS_PASSWORD')}@redis:6379/0"
-CELERY_RESULT_BACKEND = f"redis://:{config('REDIS_PASSWORD')}@redis:6379/2"
+CELERY_BROKER_URL = config('REDIS_DATABASE_SERVER_HOST')
+CELERY_RESULT_BACKEND = config('REDIS_DATABASE_SERVER_HOST')
 # Celery task settings
 CELERY_TASK_SERIALIZER = 'json'
 CELERY_RESULT_SERIALIZER = 'json'
@@ -263,8 +263,19 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 CACHES = {
     'default': {
-        'BACKEND': 'django.core.cache.backends.redis.RedisCache',
-        'LOCATION': f"redis://:{config('REDIS_PASSWORD')}@redis:6379/1",
+        'BACKEND': 'django_redis.cache.RedisCache',  # Changed this line
+        'LOCATION': config('REDIS_DATABASE_SERVER_HOST'),
+        'KEY_PREFIX': 'tndnews',
+        'TIMEOUT': 300,
+        'OPTIONS': {
+            'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            'SOCKET_CONNECT_TIMEOUT': 5,
+            'SOCKET_TIMEOUT': 5,
+            'CONNECTION_POOL_KWARGS': {
+                'max_connections': 50,
+                'retry_on_timeout': True,
+            }
+        }
     }
 }
 
