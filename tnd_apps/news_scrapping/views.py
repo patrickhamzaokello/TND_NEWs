@@ -132,21 +132,32 @@ class ArticleViewSet(viewsets.ModelViewSet):
             quality_weight: Weight for content quality (0-1)
             time_window_hours: Hours to consider for recent articles
         """
+        from django.db.models import ExpressionWrapper, DurationField
+        from django.db.models.functions import Extract
+
         now = timezone.now()
         time_threshold = now - timedelta(hours=time_window_hours)
 
         # Calculate hours since publication (for recency scoring)
+        # Use ExpressionWrapper with DurationField, then extract epoch (seconds)
         queryset = queryset.annotate(
-            hours_old=Case(
+            time_diff=Case(
                 When(
                     published_at__isnull=False,
-                    then=(
-                            (now - F('published_at')).total_seconds() / 3600.0
+                    then=ExpressionWrapper(
+                        now - F('published_at'),
+                        output_field=DurationField()
                     )
                 ),
-                default=(
-                        (now - F('scraped_at')).total_seconds() / 3600.0
+                default=ExpressionWrapper(
+                    now - F('scraped_at'),
+                    output_field=DurationField()
                 ),
+                output_field=DurationField()
+            )
+        ).annotate(
+            hours_old=ExpressionWrapper(
+                Extract('time_diff', 'epoch') / 3600.0,
                 output_field=FloatField()
             )
         )
@@ -641,11 +652,15 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
         GET /api/articles/trending/
         """
+        from django.db.models import ExpressionWrapper, DurationField
+        from django.db.models.functions import Extract
+
         # Get excluded IDs
         excluded_ids = self._get_excluded_article_ids(request)
 
         # Look at last 24 hours
         time_threshold = timezone.now() - timedelta(hours=24)
+        now = timezone.now()
 
         queryset = self.get_queryset().filter(
             scraped_at__gte=time_threshold
@@ -654,12 +669,23 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # Calculate trending score: recent views relative to article age
         queryset = queryset.annotate(
             recent_views=Count('views', filter=Q(views__viewed_at__gte=time_threshold)),
-            hours_since_published=Case(
+            time_diff=Case(
                 When(
                     published_at__isnull=False,
-                    then=(timezone.now() - F('published_at')).total_seconds() / 3600.0
+                    then=ExpressionWrapper(
+                        now - F('published_at'),
+                        output_field=DurationField()
+                    )
                 ),
-                default=(timezone.now() - F('scraped_at')).total_seconds() / 3600.0,
+                default=ExpressionWrapper(
+                    now - F('scraped_at'),
+                    output_field=DurationField()
+                ),
+                output_field=DurationField()
+            )
+        ).annotate(
+            hours_since_published=ExpressionWrapper(
+                Extract('time_diff', 'epoch') / 3600.0,
                 output_field=FloatField()
             ),
             # Velocity: views per hour (with minimum to avoid division issues)
