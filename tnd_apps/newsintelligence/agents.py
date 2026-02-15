@@ -90,7 +90,6 @@ class ArticleAnalysisAgent:
             system=ARTICLE_ANALYSIS_SYSTEM,
             user=prompt,
             model=ENRICHMENT_MODEL,
-            max_tokens=800,
         )
         parsed = parse_json_response(llm_response.content)
         parsed['_meta'] = {
@@ -264,11 +263,10 @@ class DailyDigestAgent:
             articles_json=json.dumps(articles_payload, indent=2),
             trending_entities_json=json.dumps(trending, indent=2),
         )
-        llm_response = call_claude(
+        llm_response = call_openai(
             system=DAILY_DIGEST_SYSTEM,
             user=prompt,
             model=DIGEST_MODEL,
-            max_tokens=2000,
         )
         parsed = parse_json_response(llm_response.content)
         parsed['_meta'] = {
