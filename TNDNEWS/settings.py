@@ -21,7 +21,7 @@ ANDROID_GOOGLE_CLIENT_ID = config('ANDROID_GOOGLE_CLIENT_ID')
 OPENAI_API_KEY = config('OPENAI_API_KEY')  # required
 
 # Optional: override default models
-ENRICHMENT_MODEL = 'gpt-5-nano'   # bulk article analysis
+ENRICHMENT_MODEL = 'gpt-4o-mini'   # bulk article analysis
 DIGEST_MODEL     = 'gpt-5-nano'  # daily digest synthesis
 
 ALLOWED_HOSTS = [
