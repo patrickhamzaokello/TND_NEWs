@@ -20,14 +20,15 @@ logger = logging.getLogger(__name__)
 # ── Model config ──────────────────────────────────────────────────────────────
 
 MODEL_PRICING = {
-    'gpt-4o-mini': {'input': 0.15,  'output': 0.60},
-    'gpt-4o':      {'input': 2.50,  'output': 10.00},
+    'gpt-4o-mini': {'input': 0.15, 'output': 0.60},
+    'gpt-4o': {'input': 2.50, 'output': 10.00},
     'gpt-4o-mini-2024-07-18': {'input': 0.15, 'output': 0.60},
-    'gpt-4o-2024-08-06':      {'input': 2.50, 'output': 10.00},
+    'gpt-4o-2024-08-06': {'input': 2.50, 'output': 10.00},
+    'gpt-5-nano': {'input': 0.05, 'output': 0.40},
 }
 
-ENRICHMENT_MODEL = getattr(settings, 'ENRICHMENT_MODEL', 'gpt-4o-mini')
-DIGEST_MODEL     = getattr(settings, 'DIGEST_MODEL',     'gpt-4o-mini')
+ENRICHMENT_MODEL = getattr(settings, 'ENRICHMENT_MODEL', 'gpt-5-nano')
+DIGEST_MODEL = getattr(settings, 'DIGEST_MODEL', 'gpt-5-nano')
 
 
 # ── Response wrapper ──────────────────────────────────────────────────────────
@@ -44,7 +45,7 @@ class LLMResponse:
 def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
     pricing = MODEL_PRICING.get(model, MODEL_PRICING['gpt-4o-mini'])
     return round(
-        (input_tokens  / 1_000_000) * pricing['input'] +
+        (input_tokens / 1_000_000) * pricing['input'] +
         (output_tokens / 1_000_000) * pricing['output'],
         6
     )
@@ -53,13 +54,13 @@ def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
 # ── Main client call ──────────────────────────────────────────────────────────
 
 def call_openai(
-    system: str,
-    user: str,
-    model: str = ENRICHMENT_MODEL,
-    max_tokens: int = 1024,
-    max_retries: int = 3,
-    retry_delay: float = 2.0,
-    timeout: float = 60.0,
+        system: str,
+        user: str,
+        model: str = ENRICHMENT_MODEL,
+        max_tokens: int = 1024,
+        max_retries: int = 3,
+        retry_delay: float = 2.0,
+        timeout: float = 60.0,
 ) -> LLMResponse:
     """
     Call the OpenAI Chat Completions API.
@@ -82,15 +83,15 @@ def call_openai(
                 max_completion_tokens=max_tokens,
                 messages=[
                     {'role': 'system', 'content': system},
-                    {'role': 'user',   'content': user},
+                    {'role': 'user', 'content': user},
                 ],
                 temperature=0.1,  # low temperature = consistent JSON output
             )
 
-            content       = response.choices[0].message.content or ''
-            input_tokens  = response.usage.prompt_tokens
+            content = response.choices[0].message.content or ''
+            input_tokens = response.usage.prompt_tokens
             output_tokens = response.usage.completion_tokens
-            actual_model  = response.model
+            actual_model = response.model
 
             if not content.strip():
                 raise ValueError(
