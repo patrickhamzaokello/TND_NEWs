@@ -30,9 +30,8 @@ class DailyDigestListView(generics.ListAPIView):
         # Most recent first + only published (optional filter)
         qs = super().get_queryset().order_by('-digest_date')
 
-        # Optional: only show published digests in production
-        # if not self.request.user.is_staff:
-        #     qs = qs.filter(is_published=True)
+        if not self.request.user.is_staff:
+            qs = qs.filter(is_published=True)
 
         return qs
 
@@ -45,6 +44,6 @@ class DailyDigestDetailView(generics.RetrieveAPIView):
     queryset = DailyDigest.objects.all()
     serializer_class = DailyDigestDetailSerializer
     permission_classes = [AllowAny]
-    lookup_field = 'id'  # default
+    # lookup_field = 'id'  # default
     # lookup_field = 'digest_date'  # ← alternative if you want /digests/2025-02-14/
     # lookup_url_kwarg = 'date'     # if using date in URL
