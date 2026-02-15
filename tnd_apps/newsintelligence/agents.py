@@ -11,7 +11,6 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
-from django.db import transaction
 from django.utils import timezone
 
 from .openai_client import (
@@ -30,7 +29,6 @@ from .prompts import (
 
 logger = logging.getLogger(__name__)
 
-# Max words sent to Claude — saves tokens without losing signal
 MAX_CONTENT_WORDS = 450
 
 
@@ -50,19 +48,12 @@ class ArticleAnalysisAgent:
     """
 
     def process(self, article) -> ArticleEnrichment:
-        """
-        Main entry point. Pass a news.Article instance.
-        Returns the ArticleEnrichment (completed or failed).
-        """
-        # Get or create the enrichment record
         enrichment, _ = ArticleEnrichment.objects.get_or_create(article=article)
 
-        # Skip if already successfully analyzed
         if enrichment.status == 'completed':
             logger.debug("Article %d already enriched — skipping", article.id)
             return enrichment
 
-        # Mark as in-progress
         enrichment.status = 'processing'
         enrichment.save(update_fields=['status'])
 
@@ -77,11 +68,23 @@ class ArticleAnalysisAgent:
             enrichment.error_message = str(e)
             enrichment.retry_count += 1
             enrichment.save(update_fields=['status', 'error_message', 'retry_count'])
-            logger.error("✗ Failed to enrich article %d: %s", article.id, e)
+            # Log the full error so you can see what went wrong
+            logger.error(
+                "✗ Failed article %d (%s): %s",
+                article.id, article.title[:50], e,
+                exc_info=True   # <-- prints full traceback to logs
+            )
             raise
 
     def _call_llm(self, article) -> dict:
         content = _truncate_content(article.content or article.excerpt or '')
+
+        if not content.strip():
+            raise ValueError(
+                f"Article {article.id} has no content to analyze "
+                f"(content={len(article.content or '')}, excerpt={len(article.excerpt or '')})"
+            )
+
         prompt = ARTICLE_ANALYSIS_USER.format(
             title=article.title,
             content=content,
@@ -90,6 +93,7 @@ class ArticleAnalysisAgent:
             system=ARTICLE_ANALYSIS_SYSTEM,
             user=prompt,
             model=ENRICHMENT_MODEL,
+            max_tokens=800,
         )
         parsed = parse_json_response(llm_response.content)
         parsed['_meta'] = {
@@ -147,7 +151,6 @@ class EntityExtractionAgent:
         if enrichment.status != 'completed':
             return
 
-        # Remove old mentions for this enrichment (idempotent)
         EntityMention.objects.filter(enrichment=enrichment).delete()
 
         mention_date = (
@@ -187,14 +190,12 @@ class EntityExtractionAgent:
 class DailyDigestAgent:
     """
     Synthesizes a DailyDigest (Gold layer) from the day's enriched articles.
-    Should run once daily, typically at 6 AM via Celery/Airflow.
     """
 
     def generate(self, target_date: Optional[date] = None) -> DailyDigest:
         if target_date is None:
-            target_date = timezone.now().date() - timedelta(days=1)  # yesterday
+            target_date = timezone.now().date() - timedelta(days=1)
 
-        # Idempotent: get or create
         digest, created = DailyDigest.objects.get_or_create(digest_date=target_date)
 
         if not created and digest.is_published:
@@ -211,9 +212,12 @@ class DailyDigestAgent:
         try:
             result = self._call_llm(target_date, enrichments, trending)
             self._save_digest(digest, result, enrichments)
-            logger.info("✓ Daily digest generated for %s (%d articles)", target_date, len(enrichments))
+            logger.info(
+                "✓ Daily digest generated for %s (%d articles)",
+                target_date, len(enrichments)
+            )
         except Exception as e:
-            logger.error("✗ Failed to generate digest for %s: %s", target_date, e)
+            logger.error("✗ Failed to generate digest for %s: %s", target_date, e, exc_info=True)
             raise
 
         return digest
@@ -242,15 +246,15 @@ class DailyDigestAgent:
     def _build_articles_payload(self, enrichments) -> list:
         return [
             {
-                'id':             e.article_id,
-                'title':          e.article.title,
-                'source':         e.article.source.name,
-                'summary':        e.summary,
-                'sentiment':      e.sentiment,
-                'importance':     e.importance_score,
-                'themes':         e.themes,
-                'key_facts':      e.key_facts[:3],  # top 3 to save tokens
-                'follow_up':      e.follow_up_worthy,
+                'id':        e.article_id,
+                'title':     e.article.title,
+                'source':    e.article.source.name,
+                'summary':   e.summary,
+                'sentiment': e.sentiment,
+                'importance': e.importance_score,
+                'themes':    e.themes,
+                'key_facts': e.key_facts[:3],
+                'follow_up': e.follow_up_worthy,
             }
             for e in enrichments
         ]
@@ -267,6 +271,7 @@ class DailyDigestAgent:
             system=DAILY_DIGEST_SYSTEM,
             user=prompt,
             model=DIGEST_MODEL,
+            max_tokens=2000,
         )
         parsed = parse_json_response(llm_response.content)
         parsed['_meta'] = {

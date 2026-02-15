@@ -1,38 +1,36 @@
 """
-Thin wrapper around the OpenAI API client.
-Handles retries, token tracking, and cost estimation.
+OpenAI API client for the enrichment pipeline.
+Uses the standard Chat Completions API (client.chat.completions.create).
+
+Pricing reference (per 1M tokens):
+  gpt-4o-mini : input $0.15  / output $0.60   ← bulk article enrichment
+  gpt-4o      : input $2.50  / output $10.00  ← daily digest synthesis
 """
 
 import json
 import logging
 import time
 from dataclasses import dataclass
-from typing import Optional
 
-from openai import OpenAI
+import openai
 from django.conf import settings
-from openai import RateLimitError, APIError
 
 logger = logging.getLogger(__name__)
 
-# ── Pricing per 1M tokens (USD) ───────────────────────────────────────────────
-# Update pricing as needed
+# ── Model config ──────────────────────────────────────────────────────────────
+
 MODEL_PRICING = {
-    "gpt-5-nano": {
-        "input": 0.05,
-        "output": 0.40,
-    },
+    'gpt-4o-mini': {'input': 0.15,  'output': 0.60},
+    'gpt-4o':      {'input': 2.50,  'output': 10.00},
+    'gpt-4o-mini-2024-07-18': {'input': 0.15, 'output': 0.60},
+    'gpt-4o-2024-08-06':      {'input': 2.50, 'output': 10.00},
 }
 
-# Defaults used by each agent
-ENRICHMENT_MODEL = getattr(
-    settings, "ENRICHMENT_MODEL", "gpt-5-nano"
-)
+ENRICHMENT_MODEL = getattr(settings, 'ENRICHMENT_MODEL', 'gpt-4o-mini')
+DIGEST_MODEL     = getattr(settings, 'DIGEST_MODEL',     'gpt-4o-mini')
 
-DIGEST_MODEL = getattr(
-    settings, "DIGEST_MODEL", "gpt-5-nano"
-)
 
+# ── Response wrapper ──────────────────────────────────────────────────────────
 
 @dataclass
 class LLMResponse:
@@ -44,96 +42,150 @@ class LLMResponse:
 
 
 def calculate_cost(model: str, input_tokens: int, output_tokens: int) -> float:
-    pricing = MODEL_PRICING.get(model, MODEL_PRICING[ENRICHMENT_MODEL])
-    input_cost = (input_tokens / 1_000_000) * pricing["input"]
-    output_cost = (output_tokens / 1_000_000) * pricing["output"]
-    return round(input_cost + output_cost, 6)
+    pricing = MODEL_PRICING.get(model, MODEL_PRICING['gpt-4o-mini'])
+    return round(
+        (input_tokens  / 1_000_000) * pricing['input'] +
+        (output_tokens / 1_000_000) * pricing['output'],
+        6
+    )
 
+
+# ── Main client call ──────────────────────────────────────────────────────────
 
 def call_openai(
     system: str,
     user: str,
     model: str = ENRICHMENT_MODEL,
-    max_output_tokens: int = 1024,
+    max_tokens: int = 1024,
     max_retries: int = 3,
     retry_delay: float = 2.0,
+    timeout: float = 60.0,
 ) -> LLMResponse:
     """
-    Call the OpenAI Responses API with automatic retry on rate-limit / transient errors.
-    Returns an LLMResponse with parsed content and token counts.
-    """
+    Call the OpenAI Chat Completions API.
+    Uses client.chat.completions.create — NOT client.responses.create.
 
-    client = OpenAI(api_key=settings.OPENAI_API_KEY)
+    Includes:
+      - Automatic retry on rate limits and transient errors
+      - Request timeout (default 60s)
+      - Detailed logging on failure
+    """
+    client = openai.OpenAI(
+        api_key=settings.OPENAI_API_KEY,
+        timeout=timeout,
+    )
 
     for attempt in range(1, max_retries + 1):
         try:
-            response = client.responses.create(
+            response = client.chat.completions.create(
                 model=model,
-                input=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": user},
+                max_tokens=max_tokens,
+                messages=[
+                    {'role': 'system', 'content': system},
+                    {'role': 'user',   'content': user},
                 ],
-                max_output_tokens=max_output_tokens,
+                temperature=0.1,  # low temperature = consistent JSON output
             )
 
-            content = response.output_text
+            content       = response.choices[0].message.content or ''
+            input_tokens  = response.usage.prompt_tokens
+            output_tokens = response.usage.completion_tokens
+            actual_model  = response.model
 
-            input_tokens = response.usage.input_tokens
-            output_tokens = response.usage.output_tokens
+            if not content.strip():
+                raise ValueError(
+                    f"OpenAI returned empty content (model={actual_model}, "
+                    f"finish_reason={response.choices[0].finish_reason})"
+                )
 
-            cost = calculate_cost(model, input_tokens, output_tokens)
-
+            cost = calculate_cost(actual_model, input_tokens, output_tokens)
             logger.debug(
-                "OpenAI call OK | model=%s tokens=%d+%d cost=$%.6f",
-                model,
-                input_tokens,
-                output_tokens,
-                cost,
+                "OpenAI OK | model=%s tokens=%d+%d cost=$%.5f",
+                actual_model, input_tokens, output_tokens, cost
             )
-
             return LLMResponse(
                 content=content,
                 input_tokens=input_tokens,
                 output_tokens=output_tokens,
-                model=model,
+                model=actual_model,
                 cost_usd=cost,
             )
 
-        except RateLimitError:
+        except openai.RateLimitError:
             wait = retry_delay * (2 ** attempt)
             logger.warning(
-                "Rate limit hit (attempt %d/%d). Retrying in %.1fs",
-                attempt,
-                max_retries,
-                wait,
+                "OpenAI rate limit (attempt %d/%d). Retrying in %.1fs",
+                attempt, max_retries, wait
             )
             time.sleep(wait)
 
-        except APIError as e:
+        except openai.APITimeoutError:
+            logger.warning(
+                "OpenAI timeout after %.1fs (attempt %d/%d).",
+                timeout, attempt, max_retries
+            )
+            if attempt == max_retries:
+                raise RuntimeError(
+                    f"OpenAI timed out after {max_retries} attempts ({timeout}s each). "
+                    "Check your network/firewall — the container may not have access to api.openai.com."
+                )
+            time.sleep(retry_delay)
+
+        except openai.AuthenticationError:
+            raise RuntimeError(
+                "OpenAI authentication failed. "
+                "Check that OPENAI_API_KEY is set correctly in your settings/env."
+            )
+
+        except openai.APIConnectionError as e:
+            if attempt == max_retries:
+                raise RuntimeError(
+                    f"OpenAI connection error after {max_retries} attempts: {e}\n"
+                    "The container may not have outbound internet access to api.openai.com."
+                ) from e
+            logger.warning("Connection error (attempt %d/%d): %s", attempt, max_retries, e)
+            time.sleep(retry_delay)
+
+        except openai.APIStatusError as e:
             if attempt == max_retries:
                 raise
             logger.warning(
-                "API error (attempt %d/%d): %s. Retrying...",
-                attempt,
-                max_retries,
-                str(e),
+                "API status error %s (attempt %d/%d): %s",
+                e.status_code, attempt, max_retries, e.message
             )
             time.sleep(retry_delay)
 
     raise RuntimeError(f"OpenAI API failed after {max_retries} attempts")
 
 
+# ── JSON parser ───────────────────────────────────────────────────────────────
+
 def parse_json_response(raw: str) -> dict:
     """
-    Safely parse JSON output from OpenAI.
-    Strips accidental markdown fences if present.
+    Safely parse JSON from the LLM response.
+    Strips markdown fences (```json ... ```) if present.
+    Raises a clear error showing the raw response on failure.
     """
+    if not raw or not raw.strip():
+        raise ValueError("LLM returned empty response — cannot parse JSON.")
+
     cleaned = raw.strip()
 
-    if cleaned.startswith("```"):
-        lines = cleaned.split("\n")
-        cleaned = "\n".join(
-            lines[1:-1] if lines[-1].startswith("```") else lines[1:]
-        )
+    # Strip markdown code fences
+    if cleaned.startswith('```'):
+        lines = cleaned.split('\n')
+        # Drop first line (```json or ```) and last line (```)
+        inner = lines[1:] if len(lines) > 1 else lines
+        if inner and inner[-1].strip() == '```':
+            inner = inner[:-1]
+        cleaned = '\n'.join(inner).strip()
 
-    return json.loads(cleaned)
+    try:
+        return json.loads(cleaned)
+    except json.JSONDecodeError as e:
+        # Log the first 500 chars of the raw response to help debug
+        preview = raw[:500].replace('\n', ' ')
+        raise ValueError(
+            f"JSON parse failed: {e}\n"
+            f"Raw response preview: {preview}"
+        ) from e
