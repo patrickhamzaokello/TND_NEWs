@@ -52,7 +52,7 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
     article_title.short_description = 'Article'
 
     def token_cost(self, obj):
-        from .claude_client import calculate_cost, ENRICHMENT_MODEL
+        from .openai_client import calculate_cost, ENRICHMENT_MODEL
         cost = calculate_cost(
             obj.model_used or ENRICHMENT_MODEL,
             obj.input_tokens_used,
