@@ -93,7 +93,7 @@ class ArticleAnalysisAgent:
             system=ARTICLE_ANALYSIS_SYSTEM,
             user=prompt,
             model=ENRICHMENT_MODEL,
-            max_tokens=800,
+            max_tokens=1500,
         )
         parsed = parse_json_response(llm_response.content)
         parsed['_meta'] = {
