@@ -4,9 +4,9 @@ from .models import DailyDigest
 
 
 class DailyDigestListSerializer(serializers.ModelSerializer):
-    """
-    Lightweight serializer for list view (overview cards / feed)
-    """
+
+    digest_text_excerpt = serializers.SerializerMethodField()  # ← move here
+
     class Meta:
         model = DailyDigest
         fields = [
@@ -16,12 +16,9 @@ class DailyDigestListSerializer(serializers.ModelSerializer):
             'is_published',
             'generated_at',
             'created_at',
-            # Optional: excerpt of the digest
             'digest_text_excerpt',
         ]
         read_only_fields = fields
-
-    digest_text_excerpt = serializers.SerializerMethodField()
 
     def get_digest_text_excerpt(self, obj):
         if obj.digest_text:
