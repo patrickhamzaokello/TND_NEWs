@@ -85,7 +85,9 @@ def call_openai(
                     {'role': 'system', 'content': system},
                     {'role': 'user', 'content': user},
                 ],
-                temperature=0.1,  # low temperature = consistent JSON output
+                verbosity="medium",
+                reasoning_effort="medium",
+                store=False
             )
 
             content = response.choices[0].message.content or ''
