@@ -27,7 +27,7 @@ MODEL_PRICING = {
     'gpt-5-nano': {'input': 0.05, 'output': 0.40},
 }
 
-ENRICHMENT_MODEL = getattr(settings, 'ENRICHMENT_MODEL', 'gpt-5-nano')
+ENRICHMENT_MODEL = getattr(settings, 'ENRICHMENT_MODEL', 'gpt-4o-mini')
 DIGEST_MODEL = getattr(settings, 'DIGEST_MODEL', 'gpt-5-nano')
 
 
@@ -57,7 +57,7 @@ def call_openai(
         system: str,
         user: str,
         model: str = ENRICHMENT_MODEL,
-        max_tokens: int = 1024,
+        max_tokens: int = 1500,
         max_retries: int = 3,
         retry_delay: float = 2.0,
         timeout: float = 60.0,
@@ -85,8 +85,6 @@ def call_openai(
                     {'role': 'system', 'content': system},
                     {'role': 'user', 'content': user},
                 ],
-                verbosity="medium",
-                reasoning_effort="medium",
                 store=False
             )
 
