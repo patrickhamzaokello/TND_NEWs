@@ -42,6 +42,8 @@ urlpatterns = [
 
     path('news/', include(('tnd_apps.news_scrapping.urls', 'news_scrapping'), namespace="news_scrapping")),
 
+    path('intelligence/', include(('tnd_apps.newsintelligence.urls', 'news_intelligence'), namespace="news_intelligence")),
+
     path('health/', health_check, name='health_check'),
 
     path('videos/', include('tnd_apps.tndvideo.urls')),
