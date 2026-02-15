@@ -28,7 +28,7 @@ MODEL_PRICING = {
 }
 
 ENRICHMENT_MODEL = getattr(settings, 'ENRICHMENT_MODEL', 'gpt-4o-mini')
-DIGEST_MODEL = getattr(settings, 'DIGEST_MODEL', 'gpt-5-nano')
+DIGEST_MODEL = getattr(settings, 'DIGEST_MODEL', 'gpt-4o-mini')
 
 
 # ── Response wrapper ──────────────────────────────────────────────────────────

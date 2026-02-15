@@ -22,7 +22,7 @@ OPENAI_API_KEY = config('OPENAI_API_KEY')  # required
 
 # Optional: override default models
 ENRICHMENT_MODEL = 'gpt-4o-mini'   # bulk article analysis
-DIGEST_MODEL     = 'gpt-5-nano'  # daily digest synthesis
+DIGEST_MODEL     = 'gpt-4o-mini'  # daily digest synthesis
 
 ALLOWED_HOSTS = [
     'newsapi.mwonya.com',
