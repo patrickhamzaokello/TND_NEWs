@@ -5,8 +5,20 @@
   </component>
   <component name="ChangeListManager">
     <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
-      <change afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/chimpreports_scrapper.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/README.md" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/admin.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/agents.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/apps.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/claude_client.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/management/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/management/commands/__init__.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/management/commands/enrich_articles.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/models.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/prompts.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/services.py" afterDir="false" />
+      <change afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/tasks.py" afterDir="false" />
       <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/TNDNEWS/settings.py" beforeDir="false" afterPath="$PROJECT_DIR$/TNDNEWS/settings.py" afterDir="false" />
     </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
@@ -54,7 +66,7 @@
     "RunOnceActivity.git.unshallow": "true",
     "RunOnceActivity.pycharm.django.structure.promotion.once.per.project": "true",
     "git-widget-placeholder": "main",
-    "last_opened_file_path": "C:/Users/pkase/PycharmProjects/TNDNEWS/tnd_apps/news_scrapping",
+    "last_opened_file_path": "C:/Users/pkase/PycharmProjects/TNDNEWS/tnd_apps/newsintelligence",
     "node.js.detected.package.eslint": "true",
     "node.js.detected.package.tslint": "true",
     "node.js.selected.package.eslint": "(autodetect)",
@@ -65,6 +77,7 @@
 }]]></component>
   <component name="RecentsManager">
     <key name="CopyFile.RECENT_KEYS">
+      <recent name="C:\Users\pkase\PycharmProjects\TNDNEWS\tnd_apps\newsintelligence" />
       <recent name="C:\Users\pkase\PycharmProjects\TNDNEWS\tnd_apps\news_scrapping" />
     </key>
     <key name="MoveFile.RECENT_KEYS">
@@ -147,6 +160,7 @@
       <workItem from="1768326101152" duration="27000" />
       <workItem from="1769021953511" duration="4355000" />
       <workItem from="1769354636379" duration="3147000" />
+      <workItem from="1771176914476" duration="1426000" />
     </task>
     <servers />
   </component>

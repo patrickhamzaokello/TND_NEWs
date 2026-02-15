@@ -17,6 +17,13 @@ WEB_GOOGLE_CLIENT_ID = config('WEB_GOOGLE_CLIENT_ID')
 IOS_GOOGLE_CLIENT_ID = config('IOS_GOOGLE_CLIENT_ID')
 ANDROID_GOOGLE_CLIENT_ID = config('ANDROID_GOOGLE_CLIENT_ID')
 
+
+OPENAI_API_KEY = config('OPENAI_API_KEY')  # required
+
+# Optional: override default models
+ENRICHMENT_MODEL = 'gpt-5-nano'   # bulk article analysis
+DIGEST_MODEL     = 'gpt-5-nano'  # daily digest synthesis
+
 ALLOWED_HOSTS = [
     'newsapi.mwonya.com',
     'localhost',
@@ -62,7 +69,8 @@ LOCAL_APPS = [
     'tnd_apps.authentication',
     'tnd_apps.social_auth',
     'tnd_apps.news_scrapping',
-    'tnd_apps.tndvideo'
+    'tnd_apps.tndvideo',
+    'tnd_apps.newsintelligence'
 ]
 
 
