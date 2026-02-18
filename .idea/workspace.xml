@@ -4,10 +4,7 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
-      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
-      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/serializers.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/serializers.py" afterDir="false" />
-    </list>
+    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="" />
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -149,7 +146,7 @@
       <workItem from="1769021953511" duration="4355000" />
       <workItem from="1769354636379" duration="3147000" />
       <workItem from="1771176914476" duration="12928000" />
-      <workItem from="1771232831997" duration="1086000" />
+      <workItem from="1771232831997" duration="1607000" />
     </task>
     <servers />
   </component>

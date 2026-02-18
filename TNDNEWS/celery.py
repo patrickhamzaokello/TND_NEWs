@@ -36,15 +36,15 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
     },
 'enrich-articles-hourly': {
-        'task': 'news_enrichment.tasks.enrich_new_articles',
+        'task': 'newsintelligence.tasks.enrich_new_articles',
         'schedule': crontab(minute=15),
     },
     'retry-failed-enrichments': {
-        'task': 'news_enrichment.tasks.retry_failed_enrichments',
+        'task': 'newsintelligence.tasks.retry_failed_enrichments',
         'schedule': crontab(minute=0, hour='*/6'),
     },
     'generate-daily-digest': {
-        'task': 'news_enrichment.tasks.generate_daily_digest',
+        'task': 'newsintelligence.tasks.generate_daily_digest',
         'schedule': crontab(minute=0, hour=6),
     },
 }
