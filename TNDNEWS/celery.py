@@ -45,6 +45,6 @@ celery_app.conf.beat_schedule = {
     },
     'generate-daily-digest': {
         'task': 'newsintelligence.tasks.generate_daily_digest',
-        'schedule': crontab(minute=0, hour=6),
+        'schedule': crontab(minute=0, hour=3),
     },
 }
