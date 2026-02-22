@@ -686,7 +686,13 @@ class NilePostScraper:
                         # --------------------------------------------------
                         # Check for duplicates
                         # --------------------------------------------------
-                        existing = Article.objects.filter(url=article_url).first()
+                        external_id = self._external_id_from_url(article_url)
+
+                        existing = (
+                            Article.objects.filter(external_id=external_id, source=self.source).first()
+                            if external_id
+                            else Article.objects.filter(url=article_url).first()
+                        )
 
                         if existing:
                             if get_full_content and not existing.has_full_content:
@@ -734,6 +740,7 @@ class NilePostScraper:
                         )
 
                         article = Article(
+                            external_id=self._external_id_from_url(article_url),
                             url=article_url,
                             title=card.get("title", ""),
                             featured_image_url=card.get("featured_image", ""),
@@ -843,3 +850,17 @@ class NilePostScraper:
 
         finally:
             self._quit_driver()
+
+    def _external_id_from_url(self, url:str) -> str:
+        """
+        Extract the numeric post ID from a NilePost URL.
+        e.g. https://nilepost.co.ug/News/322081/some-slug → '322081'
+        """
+        try:
+            parts = url.rstrip("/").split("/")
+            for part in reversed(parts):
+                if part.isdigit():
+                    return part
+        except Exception:
+            pass
+        return ""
