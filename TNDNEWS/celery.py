@@ -47,8 +47,24 @@ celery_app.conf.beat_schedule = {
         'task': 'newsintelligence.tasks.generate_daily_digest',
         'schedule': crontab(minute=0, hour=3),
     },
-  'scrape-nilepost-all-daily': {
-      "task": "news_scrapping.tasks.scrape_nilepost_section",
-      "schedule": crontab(minute=0, hour="*/3"),  # every 3 hours (00:00, 03:00, 06:00, ...)
-  },
+  'scrape-nilepost-news': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',
+        'schedule': crontab(minute=0, hour='*/3'),   # :00 — 00:00, 03:00, 06:00 …
+        'kwargs': {'section': 'news', 'get_full_content': True, 'max_pages': 2},
+    },
+    'scrape-nilepost-opinions': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',
+        'schedule': crontab(minute=15, hour='*/3'),  # :15
+        'kwargs': {'section': 'opinions', 'get_full_content': True, 'max_pages': 2},
+    },
+    'scrape-nilepost-politics': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',
+        'schedule': crontab(minute=30, hour='*/3'),  # :30
+        'kwargs': {'section': 'politics', 'get_full_content': True, 'max_pages': 2},
+    },
+    'scrape-nilepost-security': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',
+        'schedule': crontab(minute=45, hour='*/3'),  # :45
+        'kwargs': {'section': 'security', 'get_full_content': True, 'max_pages': 2},
+    },
 }
