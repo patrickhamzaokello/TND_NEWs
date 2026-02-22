@@ -387,7 +387,7 @@ def _mark_run_failed(task_id: str, error_message: str) -> None:
     bind=True,
     max_retries=3,
     default_retry_delay=300,          # 5 minutes between retries
-    name="news_scrapping.tasks.scrape_nilepost_section",
+    # name="news_scrapping.tasks.scrape_nilepost_section",
     acks_late=True,                   # only ack after successful execution
     reject_on_worker_lost=True,       # re-queue if worker dies mid-task
 )
