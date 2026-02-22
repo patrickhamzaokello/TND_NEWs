@@ -1,6 +1,8 @@
 from celery import shared_task
 from celery.utils.log import get_task_logger
 from django.conf import settings
+
+from .nilepost_scrapper import NilePostScraper
 from .scraper import TNDNewsDjangoScraper
 from .kampalatimesscrapper import KampalaTimesDjangoScraper
 from .dokolo_scraper import DokoloPostDjangoScraper
@@ -338,3 +340,158 @@ def health_check_task():
     """
     logger.info("Health check task executed successfully")
     return {"status": "healthy"}
+
+
+NILEPOST_SECTIONS: dict[str, str] = {
+    "news":     "https://nilepost.co.ug/news",
+    "opinions": "https://nilepost.co.ug/opinions",
+    "politics": "https://nilepost.co.ug/politics",
+    "security": "https://nilepost.co.ug/security",
+}
+
+DEFAULT_SOURCE_NAME = "NilePost"
+
+
+# ── Helper ─────────────────────────────────────────────────────────────────
+
+def _attach_task_id(scraper: NilePostScraper, task_id: str) -> None:
+    """
+    Find the most recent 'started' ScrapingRun for this source and
+    stamp it with the Celery task ID so it can be tracked externally.
+    """
+    run = (
+        ScrapingRun.objects.filter(source=scraper.source, status="started")
+        .order_by("-started_at")
+        .first()
+    )
+    if run:
+        run.task_id = task_id
+        run.save(update_fields=["task_id"])
+
+
+def _mark_run_failed(task_id: str, error_message: str) -> None:
+    """
+    If a ScrapingRun was created for this task, mark it as failed.
+    """
+    run = ScrapingRun.objects.filter(task_id=task_id).first()
+    if run:
+        run.status = "failed"
+        run.error_message = error_message
+        run.completed_at = timezone.now()
+        run.save(update_fields=["status", "error_message", "completed_at"])
+
+
+# ── Per-section task ───────────────────────────────────────────────────────
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,          # 5 minutes between retries
+    name="tnd_apps.news_scrapping.tasks.scrape_nilepost_section",
+    acks_late=True,                   # only ack after successful execution
+    reject_on_worker_lost=True,       # re-queue if worker dies mid-task
+)
+def scrape_nilepost_section(
+    self,
+    section: str = "news",
+    get_full_content: bool = True,
+    max_articles: int | None = None,
+    max_pages: int = 1,
+    start_page: int = 1,
+    source_name: str = DEFAULT_SOURCE_NAME,
+):
+    """
+    Scrape a single NilePost section and persist articles to the database.
+
+    Args:
+        section:          One of the keys in NILEPOST_SECTIONS
+                          ('news', 'opinions', 'politics', 'security').
+        get_full_content: Visit each article's detail page for full body text.
+        max_articles:     Hard cap on articles processed (None = unlimited).
+        max_pages:        How many listing pages to paginate through.
+        start_page:       Listing page to start from (1-indexed).
+        source_name:      NewsSource.name to look up / create.
+
+    Returns:
+        Result dict from NilePostScraper.scrape_and_save().
+    """
+    section = section.lower()
+
+    if section not in NILEPOST_SECTIONS:
+        valid = ", ".join(NILEPOST_SECTIONS)
+        raise ValueError(
+            f"Unknown section '{section}'. Valid options: {valid}"
+        )
+
+    listing_url = NILEPOST_SECTIONS[section]
+    task_id = self.request.id
+
+    logger.info(
+        "Starting NilePost scrape | section=%s | url=%s | "
+        "full_content=%s | max_articles=%s | max_pages=%s | task_id=%s",
+        section, listing_url, get_full_content, max_articles, max_pages, task_id,
+    )
+
+    try:
+        scraper = NilePostScraper(source_name=source_name, headless=True)
+
+        # The scraper creates a ScrapingRun internally when scrape_and_save()
+        # is called. We pass the task ID immediately after so it appears on the run.
+        # Because scrape_and_save starts the run, we hook in via a thin wrapper
+        # that stamps the ID after the run object is created.
+
+        # Monkey-patch: wrap the original scrape_and_save to capture the run
+        _original = scraper.scrape_and_save
+
+        def _patched_scrape_and_save(**kwargs):
+            # Let the scraper create its run, then stamp the task_id
+            import threading
+
+            def _stamp():
+                import time
+                time.sleep(0.5)  # brief wait for the run row to be committed
+                _attach_task_id(scraper, task_id)
+
+            threading.Thread(target=_stamp, daemon=True).start()
+            return _original(**kwargs)
+
+        result = _patched_scrape_and_save(
+            get_full_content=get_full_content,
+            max_articles=max_articles,
+            start_page=start_page,
+            max_pages=max_pages,
+            news_url=listing_url,
+        )
+
+        logger.info(
+            "NilePost scrape complete | section=%s | added=%s | updated=%s | "
+            "skipped=%s | errors=%s | duration=%ss",
+            section,
+            result.get("articles_added", 0),
+            result.get("articles_updated", 0),
+            result.get("articles_skipped", 0),
+            result.get("errors", 0),
+            result.get("duration", "?"),
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(
+            "NilePost scrape FAILED | section=%s | task_id=%s | error=%s\n%s",
+            section, task_id, exc, traceback.format_exc(),
+        )
+
+        _mark_run_failed(task_id, str(exc))
+
+        if self.request.retries < self.max_retries:
+            logger.info(
+                "Retrying section=%s in %ss (attempt %s/%s)…",
+                section,
+                self.default_retry_delay,
+                self.request.retries + 1,
+                self.max_retries,
+            )
+            raise self.retry(countdown=self.default_retry_delay, exc=exc)
+
+        # All retries exhausted — re-raise so Celery marks the task FAILURE
+        raise exc

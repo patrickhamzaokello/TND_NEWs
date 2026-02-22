@@ -47,4 +47,8 @@ celery_app.conf.beat_schedule = {
         'task': 'newsintelligence.tasks.generate_daily_digest',
         'schedule': crontab(minute=0, hour=3),
     },
+  'scrape-nilepost-all-daily': {
+      "task": "news_scrapping.scrape_nilepost_section",
+      "schedule": crontab(minute=0, hour="*/3"),  # every 3 hours (00:00, 03:00, 06:00, ...)
+  },
 }
