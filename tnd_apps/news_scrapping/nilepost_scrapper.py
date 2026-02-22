@@ -528,26 +528,52 @@ class NilePostScraper:
                         By.CSS_SELECTOR,
                         "article.nile_post_apr05-main-left div.nile_post_apr05-excerpt",
                     )
-                    detail["styled_excerpt"] = self._clean(excerpt_el.text)
+                    # Same fix — use JS innerText
+                    styled_excerpt = self.driver.execute_script(
+                        "return arguments[0].innerText.trim();", excerpt_el
+                    )
+                    detail["styled_excerpt"] = self._clean(styled_excerpt)
                 except NoSuchElementException:
                     detail["styled_excerpt"] = ""
 
                 # --- Full body content -------------------------------------
                 # Target: .blog-details-wrapper .special-section.content-body p
+                # --- Body content ---
                 paragraphs: list[str] = []
                 try:
                     content_div = self.driver.find_element(
                         By.CSS_SELECTOR,
                         ".blog-details-wrapper .special-section.content-body",
                     )
-                    para_els = content_div.find_elements(By.TAG_NAME, "p")
-                    for p in para_els:
-                        text = self._clean(p.text)
-                        # Skip empty, very short, or ad-related paragraphs
-                        if len(text) > 20:
-                            paragraphs.append(text)
+
+                    # Use JavaScript to get clean inner text per paragraph,
+                    # bypassing whitespace-only text nodes and ad injections
+                    paragraphs_raw = self.driver.execute_script("""
+                        const container = arguments[0];
+                        const paras = container.querySelectorAll('p');
+                        const results = [];
+                        for (const p of paras) {
+                            // Skip paragraphs inside ad divs, embeds, or the tags block
+                            if (
+                                p.closest('.nile_post_apr05-related-inline') ||
+                                p.closest('.wp-block-embed') ||
+                                p.closest('script') ||
+                                p.closest('style')
+                            ) continue;
+
+                            // innerText handles visibility and collapses whitespace correctly
+                            const text = (p.innerText || p.textContent || '').trim();
+                            if (text.length > 20) {
+                                results.push(text);
+                            }
+                        }
+                        return results;
+                    """, content_div)
+
+                    paragraphs = paragraphs_raw or []
+
                 except NoSuchElementException:
-                    pass
+                    self._log(run, "warning", "Content body not found", article_url)
 
                 detail["full_content"] = "\n\n".join(paragraphs)
                 detail["word_count"] = len(detail["full_content"].split())
