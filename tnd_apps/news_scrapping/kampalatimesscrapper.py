@@ -1,4 +1,10 @@
-import requests
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
+from selenium.webdriver.common.by import By
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.common.exceptions import TimeoutException, WebDriverException
 from bs4 import BeautifulSoup
 import time
 import re
@@ -9,26 +15,46 @@ from urllib.parse import urljoin
 from django.utils.text import slugify
 from .models import Article, Category, Tag, Author, NewsSource, ScrapingRun, ScrapingLog
 
+
 class KampalaTimesDjangoScraper:
     def __init__(self, source_name="Kampala Edge Times"):
         try:
             self.source = NewsSource.objects.get(name=source_name)
         except NewsSource.DoesNotExist:
-            # Create default source if it doesn't exist
             self.source = NewsSource.objects.create(
                 name=source_name,
                 base_url="https://www.kampalaedgetimes.com",
                 news_url="https://www.kampalaedgetimes.com/kampala-edge-times/kampala-edge-times-articles"
             )
 
-        self.headers = {
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36',
-            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-            'Accept-Language': 'en-US,en;q=0.5',
-            'Connection': 'keep-alive',
-        }
-        self.session = requests.Session()
-        self.session.headers.update(self.headers)
+        self.driver = None
+
+    def setup_selenium_driver(self):
+        """Setup Selenium Chrome driver"""
+        chrome_options = Options()
+        chrome_options.add_argument("--headless")
+        chrome_options.add_argument("--no-sandbox")
+        chrome_options.add_argument("--disable-dev-shm-usage")
+        chrome_options.add_argument("--disable-gpu")
+        chrome_options.add_argument("--disable-blink-features=AutomationControlled")
+        chrome_options.add_experimental_option("excludeSwitches", ["enable-automation"])
+        chrome_options.add_experimental_option("useAutomationExtension", False)
+        chrome_options.add_argument(
+            "user-agent=Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+            "AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        )
+        chrome_options.binary_location = "/usr/bin/chromium"
+        service = Service(executable_path="/usr/bin/chromedriver")
+        self.driver = webdriver.Chrome(service=service, options=chrome_options)
+        self.driver.execute_script(
+            "Object.defineProperty(navigator, 'webdriver', {get: () => undefined})"
+        )
+
+    def cleanup_selenium_driver(self):
+        """Close the Selenium driver"""
+        if self.driver:
+            self.driver.quit()
+            self.driver = None
 
     def log_message(self, run, level, message, article_url=""):
         """Log a message to the database"""
@@ -43,11 +69,10 @@ class KampalaTimesDjangoScraper:
         """Get or create a category"""
         if not category_name:
             return None
-    
-        # Use slug as the lookup field since it has the unique constraint
+
         category_slug = slugify(category_name)
         category, created = Category.objects.get_or_create(
-            slug=category_slug,  # Use slug for lookup
+            slug=category_slug,
             defaults={'name': category_name}
         )
         return category
@@ -56,17 +81,16 @@ class KampalaTimesDjangoScraper:
         """Get or create a tag"""
         if not tag_name:
             return None
-    
+
         tag_slug = slugify(tag_name)
         tag, created = Tag.objects.get_or_create(
-            slug=tag_slug,  # Use slug for lookup
+            slug=tag_slug,
             defaults={'name': tag_name}
         )
         return tag
 
     def get_or_create_author(self, author_name, profile_url=""):
         """Get or create an author"""
-        # Default to "Guest" if author_name is empty or None
         author_name = author_name or "Guest"
         author, created = Author.objects.get_or_create(
             name=author_name,
@@ -80,7 +104,6 @@ class KampalaTimesDjangoScraper:
         try:
             data = {}
 
-            # Try multiple ways to find title and URL
             title = None
             url = None
             title_element = article_element.find('h2', class_='is-title post-title')
@@ -108,16 +131,14 @@ class KampalaTimesDjangoScraper:
                         break
 
             data['title'] = title or ''
-            # Use dot notation for self.source.base_url
             data['url'] = urljoin(self.source.base_url, url) if url else ''
-            
-            # Generate external_id from URL hash if URL exists
+
             if data['url']:
                 full_hash = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
-                data['external_id'] = full_hash[:20]  # Take first 20 characters
+                data['external_id'] = full_hash[:20]
             else:
                 data['external_id'] = ''
-    
+
             # Extract featured image
             featured_image = None
             media_div = article_element.find('div', class_='media')
@@ -128,22 +149,21 @@ class KampalaTimesDjangoScraper:
                     if featured_image:
                         self.log_message(run, 'info', f"Found featured image: {featured_image}")
                     else:
-                        self.log_message(run, 'warning', f"No data-bgsrc found in img span", context=str(img_span)[:500])
+                        self.log_message(run, 'warning', f"No data-bgsrc found in img span")
                 else:
-                    self.log_message(run, 'warning', f"No span with class 'img' found in media div", context=str(media_div)[:500])
+                    self.log_message(run, 'warning', f"No span with class 'img' found in media div")
             else:
-                self.log_message(run, 'warning', f"No div with class 'media' found", context=str(article_element)[:500])
-            
-            # Fallback to img element if no data-bgsrc found
+                self.log_message(run, 'warning', f"No div with class 'media' found")
+
             if not featured_image:
                 img_element = article_element.find('img')
                 if img_element:
                     featured_image = img_element.get('src') or img_element.get('data-src')
                     if featured_image:
                         self.log_message(run, 'info', f"Fallback: Found featured image in img tag: {featured_image}")
-            
+
             data['featured_image'] = featured_image or ''
-    
+
             # Extract category
             cat_labels = article_element.find('span', class_='cat-labels')
             if cat_labels:
@@ -153,7 +173,7 @@ class KampalaTimesDjangoScraper:
                 category_links = article_element.find_all('a', class_=lambda x: x and 'category' in str(x))
                 if category_links:
                     data['category'] = category_links[0].get_text(strip=True)
-    
+
             # Extract date and author
             post_meta = article_element.find('div', class_='post-meta')
             if post_meta:
@@ -167,18 +187,18 @@ class KampalaTimesDjangoScraper:
                     if author_link:
                         data['author'] = author_link.get_text(strip=True)
                         data['author_url'] = author_link.get('href', '')
-    
+
             # Extract excerpt
             excerpt_div = article_element.find('div', class_='excerpt')
             if excerpt_div:
                 excerpt_p = excerpt_div.find('p')
                 data['excerpt'] = excerpt_p.get_text(strip=True) if excerpt_p else ''
-    
+
             if data['title'] and not data['url']:
                 links = article_element.find_all('a', href=True)
                 for link in links:
                     if 'kampalaedgetimes.com' in link.get('href', ''):
-                        data['url'] = urljoin(self.source.base_url, url) if url else ''
+                        data['url'] = urljoin(self.source.base_url, link.get('href', ''))
                         data['external_id'] = hashlib.md5(data['url'].encode('utf-8')).hexdigest()
                         break
 
@@ -194,26 +214,28 @@ class KampalaTimesDjangoScraper:
     def scrape_full_article_content(self, article_url, run):
         """Scrape full content from individual article page"""
         try:
-            response = self.session.get(article_url, timeout=30)
-            response.raise_for_status()
-    
-            soup = BeautifulSoup(response.content, 'html.parser')
-            
-            # Find the main content element
+            self.driver.get(article_url)
+            try:
+                WebDriverWait(self.driver, 15).until(
+                    EC.presence_of_element_located((By.CLASS_NAME, "main-content"))
+                )
+            except TimeoutException:
+                self.log_message(run, 'warning', f'Timed out waiting for main-content on {article_url}', article_url)
+
+            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
+
             main_content = soup.find('div', class_='main-content')
             if not main_content:
                 self.log_message(run, 'warning', f'No main content found for {article_url}', article_url)
                 return None
-    
+
             article_data = {}
-    
-            # Extract title from h1 in the-post-header
+
             header = main_content.find('div', class_='the-post-header')
             if header:
                 title_element = header.find('h1', class_='is-title')
                 article_data['full_title'] = title_element.get_text(strip=True) if title_element else ''
-                
-                # Extract author from post-meta
+
                 post_meta = header.find('div', class_='post-meta')
                 if post_meta:
                     author_span = post_meta.find('span', class_='post-author')
@@ -222,76 +244,70 @@ class KampalaTimesDjangoScraper:
                         if author_link:
                             article_data['author'] = author_link.get_text(strip=True)
                             article_data['author_url'] = author_link.get('href', '')
-    
-            # Extract featured image from single-featured div
+
             featured_div = main_content.find('div', class_='single-featured')
             if featured_div:
                 img_element = featured_div.find('img')
                 if img_element:
                     article_data['featured_image_url'] = img_element.get('src', '')
                     article_data['image_caption'] = img_element.get('alt', '')
-    
-            # Extract main content
+
             content_div = main_content.find('div', class_='post-content')
             full_content = []
-    
+
             if content_div:
-                # Find all paragraphs, excluding those in unwanted containers
                 for p in content_div.find_all('p'):
-                    # Skip paragraphs inside specific containers
                     if p.find_parent(class_=['post-share', 'sharedaddy', 'jp-relatedposts', 'code-block']):
                         continue
-                    
-                    # Skip empty paragraphs or those with only &nbsp;
                     text = p.get_text(strip=True)
-                    if text and text != '' and len(text) > 10:
-                        # Clean up whitespace
+                    if text and len(text) > 10:
                         text = re.sub(r'\s+', ' ', text)
                         full_content.append(text)
-    
-            # Extract tags from the-post-tags
+
             tags_div = main_content.find('div', class_='the-post-tags')
             tags = []
             if tags_div:
                 tag_links = tags_div.find_all('a', rel='tag')
                 tags = [tag.get_text(strip=True) for tag in tag_links]
-    
+
             article_data.update({
                 'full_content': '\n\n'.join(full_content),
                 'word_count': len(' '.join(full_content).split()),
                 'paragraph_count': len(full_content),
                 'tags': tags,
             })
-    
+
             return article_data
-    
+
         except Exception as e:
             self.log_message(run, 'error', f'Error scraping full content: {str(e)}', article_url)
             return None
 
     def scrape_and_save(self, get_full_content=True, max_articles=None):
         """Main method to scrape and save articles to database"""
-
-        # Create scraping run record
         run = ScrapingRun.objects.create(
             source=self.source,
             status='started'
         )
 
         try:
+            self.setup_selenium_driver()
             self.log_message(run, 'info', f'Started scraping from {self.source.news_url}')
 
-            # Get main news page
-            response = self.session.get(self.source.news_url, timeout=30)
-            response.raise_for_status()
+            self.driver.get(self.source.news_url)
+            try:
+                WebDriverWait(self.driver, 20).until(
+                    EC.presence_of_element_located((By.CSS_SELECTOR, "article.l-post"))
+                )
+            except TimeoutException:
+                self.log_message(run, 'warning', 'Timed out waiting for articles to load, proceeding anyway')
 
-            soup = BeautifulSoup(response.content, 'html.parser')
+            soup = BeautifulSoup(self.driver.page_source, 'html.parser')
             blog_entries = soup.find('div', class_=lambda x: x and 'loop' in x and 'grid' in x)
 
             if not blog_entries:
                 raise Exception("Could not find blog entries area")
 
-            # Find all article containers
             article_containers = blog_entries.find_all('article', class_='l-post')
             run.articles_found = len(article_containers)
             run.save()
@@ -303,19 +319,14 @@ class KampalaTimesDjangoScraper:
 
             for i, container in enumerate(article_containers):
                 try:
-                    # Extract basic article data
                     article_data = self.extract_article_data(container, run)
                     if not article_data or not article_data.get('url'):
                         run.articles_skipped += 1
                         continue
 
-                    # Check if article already exists
-                    existing_article = Article.objects.filter(
-                        url=article_data['url']
-                    ).first()
+                    existing_article = Article.objects.filter(url=article_data['url']).first()
 
                     if existing_article:
-                        # Update if we have more complete data
                         if get_full_content and not existing_article.has_full_content:
                             full_data = self.scrape_full_article_content(article_data['url'], run)
                             if full_data:
@@ -326,7 +337,6 @@ class KampalaTimesDjangoScraper:
                                 existing_article.has_full_content = True
                                 existing_article.save()
 
-                                # Add tags
                                 for tag_name in full_data.get('tags', []):
                                     tag = self.get_or_create_tag(tag_name)
                                     if tag:
@@ -338,7 +348,6 @@ class KampalaTimesDjangoScraper:
                             run.articles_skipped += 1
                         continue
 
-                    # Create new article
                     category = self.get_or_create_category(article_data.get('category'))
                     author = self.get_or_create_author(
                         article_data.get('author', ''),
@@ -357,7 +366,7 @@ class KampalaTimesDjangoScraper:
                         published_time_str=article_data.get('published_time', ''),
                     )
 
-                    # Get full content if requested
+                    full_data = None
                     if get_full_content:
                         full_data = self.scrape_full_article_content(article_data['url'], run)
                         if full_data:
@@ -366,8 +375,7 @@ class KampalaTimesDjangoScraper:
                             article.paragraph_count = full_data['paragraph_count']
                             article.image_caption = full_data.get('image_caption', '')
                             article.has_full_content = True
-                            
-                            # Update author from full content if available
+
                             if full_data.get('author'):
                                 article.author = self.get_or_create_author(
                                     full_data['author'],
@@ -376,7 +384,6 @@ class KampalaTimesDjangoScraper:
 
                     article.save()
 
-                    # Add tags
                     if get_full_content and full_data:
                         for tag_name in full_data.get('tags', []):
                             tag = self.get_or_create_tag(tag_name)
@@ -386,7 +393,6 @@ class KampalaTimesDjangoScraper:
                     run.articles_added += 1
                     self.log_message(run, 'info', f'Added new article: {article.title}')
 
-                    # Respectful delay
                     time.sleep(1)
 
                 except Exception as e:
@@ -394,7 +400,6 @@ class KampalaTimesDjangoScraper:
                     self.log_message(run, 'error', f'Error processing article {i + 1}: {str(e)}')
                     continue
 
-            # Mark run as completed
             run.status = 'completed'
             run.completed_at = timezone.now()
             run.save()
@@ -417,6 +422,8 @@ class KampalaTimesDjangoScraper:
             run.error_message = str(e)
             run.completed_at = timezone.now()
             run.save()
-
             self.log_message(run, 'error', f'Scraping failed: {str(e)}')
             raise
+
+        finally:
+            self.cleanup_selenium_driver()
