@@ -113,7 +113,7 @@ class EnrichmentService:
             except Exception:
                 run.articles_failed += 1
 
-        run.status       = 'completed'
+        run.status       = 'completed' if run.articles_failed == 0 else 'partial'
         run.completed_at = timezone.now()
         run.save()
         return run
@@ -171,7 +171,7 @@ class EnrichmentService:
                 has_full_content=True,
             ).exclude(
                 id__in=handled_ids,
-            ).select_related('source', 'category')
+            ).select_related('source', 'category', 'author')
             .order_by('-scraped_at')[:self.batch_size]
         )
 

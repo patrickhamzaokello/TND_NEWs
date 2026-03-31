@@ -4,7 +4,17 @@
     <option name="autoReloadType" value="SELECTIVE" />
   </component>
   <component name="ChangeListManager">
-    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="" />
+    <list default="true" id="72759159-4427-4604-bbbe-0e6d825d5815" name="Changes" comment="">
+      <change beforePath="$PROJECT_DIR$/.idea/workspace.xml" beforeDir="false" afterPath="$PROJECT_DIR$/.idea/workspace.xml" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/news_scrapping/scraper.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/news_scrapping/scraper.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/README.md" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/README.md" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/agents.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/agents.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/serializers.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/serializers.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/services.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/services.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/tasks.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/tasks.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/tests.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/tests.py" afterDir="false" />
+      <change beforePath="$PROJECT_DIR$/tnd_apps/newsintelligence/views.py" beforeDir="false" afterPath="$PROJECT_DIR$/tnd_apps/newsintelligence/views.py" afterDir="false" />
+    </list>
     <option name="SHOW_DIALOG" value="false" />
     <option name="HIGHLIGHT_CONFLICTS" value="true" />
     <option name="HIGHLIGHT_NON_ACTIVE_CHANGELIST" value="false" />
@@ -149,7 +159,7 @@
       <workItem from="1771232831997" duration="1607000" />
       <workItem from="1771448904446" duration="334000" />
       <workItem from="1771762772060" duration="13172000" />
-      <workItem from="1774987855676" duration="1325000" />
+      <workItem from="1774987855676" duration="3812000" />
     </task>
     <servers />
   </component>

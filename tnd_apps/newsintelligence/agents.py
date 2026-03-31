@@ -25,6 +25,7 @@ from .prompts import (
     ARTICLE_ANALYSIS_USER,
     DAILY_DIGEST_SYSTEM,
     DAILY_DIGEST_USER,
+    get_article_count_guidance,
 )
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,7 @@ def _truncate_content(text: str, max_words: int = MAX_CONTENT_WORDS) -> str:
     words = text.split()
     if len(words) <= max_words:
         return text
+    logger.warning("Content truncated from %d to %d words", len(words), max_words)
     return ' '.join(words[:max_words]) + '...'
 
 
@@ -63,16 +65,24 @@ class ArticleAnalysisAgent:
             logger.info("✓ Enriched article %d: %s", article.id, article.title[:60])
             return enrichment
 
+        except ValueError as e:
+            # Data issue (empty content, bad LLM JSON, missing keys) — not worth retrying
+            enrichment.status = 'skipped'
+            enrichment.error_message = str(e)
+            enrichment.save(update_fields=['status', 'error_message'])
+            logger.warning("⚠ Skipped article %d (%s): %s", article.id, article.title[:50], e)
+            raise
+
         except Exception as e:
+            # LLM / network error — mark failed and allow retry
             enrichment.status = 'failed'
             enrichment.error_message = str(e)
             enrichment.retry_count += 1
             enrichment.save(update_fields=['status', 'error_message', 'retry_count'])
-            # Log the full error so you can see what went wrong
             logger.error(
                 "✗ Failed article %d (%s): %s",
                 article.id, article.title[:50], e,
-                exc_info=True   # <-- prints full traceback to logs
+                exc_info=True
             )
             raise
 
@@ -85,7 +95,9 @@ class ArticleAnalysisAgent:
                 f"(content={len(article.content or '')}, excerpt={len(article.excerpt or '')})"
             )
 
+        source_name = article.source.name if article.source else 'Unknown'
         prompt = ARTICLE_ANALYSIS_USER.format(
+            source=source_name,
             title=article.title,
             content=content,
         )
@@ -93,7 +105,7 @@ class ArticleAnalysisAgent:
             system=ARTICLE_ANALYSIS_SYSTEM,
             user=prompt,
             model=ENRICHMENT_MODEL,
-            max_tokens=1500,
+            max_tokens=1800,
         )
         parsed = parse_json_response(llm_response.content)
         parsed['_meta'] = {
@@ -103,7 +115,21 @@ class ArticleAnalysisAgent:
         }
         return parsed
 
+    _REQUIRED_KEYS = {'summary', 'sentiment', 'importance_score', 'themes', 'key_facts', 'entities'}
+    _VALID_SENTIMENTS = {'positive', 'negative', 'neutral', 'mixed'}
+
     def _save_enrichment(self, enrichment: ArticleEnrichment, data: dict):
+        missing = self._REQUIRED_KEYS - data.keys()
+        if missing:
+            raise ValueError(f"LLM response missing required keys: {missing}")
+
+        if data.get('sentiment') not in self._VALID_SENTIMENTS:
+            logger.warning(
+                "Unexpected sentiment %r for article %d — defaulting to 'neutral'",
+                data.get('sentiment'), enrichment.article_id,
+            )
+            data['sentiment'] = 'neutral'
+
         meta = data.pop('_meta', {})
         entities = data.get('entities', {})
         audience = data.get('audience_relevance', {})
@@ -261,9 +287,11 @@ class DailyDigestAgent:
 
     def _call_llm(self, target_date: date, enrichments, trending) -> dict:
         articles_payload = self._build_articles_payload(enrichments)
+        count = len(enrichments)
         prompt = DAILY_DIGEST_USER.format(
             digest_date=str(target_date),
-            article_count=len(enrichments),
+            article_count=count,
+            article_count_guidance=get_article_count_guidance(count),
             articles_json=json.dumps(articles_payload, indent=2),
             trending_entities_json=json.dumps(trending, indent=2),
         )
@@ -271,7 +299,7 @@ class DailyDigestAgent:
             system=DAILY_DIGEST_SYSTEM,
             user=prompt,
             model=DIGEST_MODEL,
-            max_tokens=2000,
+            max_tokens=3000,
         )
         parsed = parse_json_response(llm_response.content)
         parsed['_meta'] = {

@@ -97,7 +97,11 @@ def generate_daily_digest(self, target_date_str: str = None):
     target_date = None
     if target_date_str:
         from datetime import datetime
-        target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        try:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            logger.error("Invalid date format %r — expected YYYY-MM-DD", target_date_str)
+            return {'error': f"Invalid date format: {target_date_str!r}. Expected YYYY-MM-DD."}
 
     logger.info("[Task] generate_daily_digest | date=%s", target_date or 'yesterday')
     try:

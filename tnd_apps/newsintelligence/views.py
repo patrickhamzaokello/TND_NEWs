@@ -44,6 +44,11 @@ class DailyDigestDetailView(generics.RetrieveAPIView):
     queryset = DailyDigest.objects.all()
     serializer_class = DailyDigestDetailSerializer
     permission_classes = [AllowAny]
-    # lookup_field = 'id'  # default
     # lookup_field = 'digest_date'  # ← alternative if you want /digests/2025-02-14/
     # lookup_url_kwarg = 'date'     # if using date in URL
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        if not self.request.user.is_staff:
+            qs = qs.filter(is_published=True)
+        return qs

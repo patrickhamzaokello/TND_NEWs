@@ -119,14 +119,13 @@ class DailyDigestDetailSerializer(serializers.ModelSerializer):
 
     def _get_article_map(self, obj) -> dict[int, dict]:
         """
-        Build the article map once and cache it on the serializer context
-        so top_stories, story_threads, and under_radar_story share one DB hit.
+        Build the article map once per serializer instance so top_stories,
+        story_threads, and under_radar_story share one DB hit.
         """
-        cache_key = f'_article_map_{obj.pk}'
-        if cache_key not in self.context:
+        if not hasattr(self, '_article_map_cache'):
             ids = _collect_article_ids(obj)
-            self.context[cache_key] = _build_article_map(ids)
-        return self.context[cache_key]
+            self._article_map_cache = _build_article_map(ids)
+        return self._article_map_cache
 
     def get_top_stories(self, obj) -> list:
         article_map = self._get_article_map(obj)

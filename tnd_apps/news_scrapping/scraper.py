@@ -6,6 +6,7 @@ from datetime import datetime
 from django.utils import timezone
 from urllib.parse import urljoin
 from django.utils.text import slugify
+from django.db import IntegrityError
 from .models import Article, Category, Tag, Author, NewsSource, ScrapingRun, ScrapingLog
 
 class TNDNewsDjangoScraper:
@@ -274,10 +275,18 @@ class TNDNewsDjangoScraper:
                         run.articles_skipped += 1
                         continue
 
-                    # Check if article already exists
+                    # Check if article already exists by URL
                     existing_article = Article.objects.filter(
                         url=article_data['url']
                     ).first()
+
+                    # Fallback: check by external_id + source to avoid duplicate key errors
+                    # (handles URL changes between runs where the WordPress post ID is the same)
+                    if not existing_article and article_data.get('external_id'):
+                        existing_article = Article.objects.filter(
+                            external_id=article_data['external_id'],
+                            source=self.source,
+                        ).first()
 
                     if existing_article:
                         # Update if we have more complete data
@@ -323,6 +332,7 @@ class TNDNewsDjangoScraper:
                     )
 
                     # Get full content if requested
+                    full_data = None
                     if get_full_content:
                         full_data = self.scrape_full_article_content(article_data['url'], run)
                         if full_data:
@@ -331,7 +341,7 @@ class TNDNewsDjangoScraper:
                             article.paragraph_count = full_data['paragraph_count']
                             article.image_caption = full_data.get('image_caption', '')
                             article.has_full_content = True
-                            
+
                             # Update author from full content if available
                             if full_data.get('author'):
                                 article.author = self.get_or_create_author(
@@ -339,7 +349,14 @@ class TNDNewsDjangoScraper:
                                     full_data.get('author_url', '')
                                 )
 
-                    article.save()
+                    try:
+                        article.save()
+                    except IntegrityError:
+                        run.articles_skipped += 1
+                        self.log_message(run, 'warning',
+                                         f'Skipped duplicate article (external_id={article.external_id}): {article.title}',
+                                         article_data['url'])
+                        continue
 
                     # Add tags
                     if get_full_content and full_data:

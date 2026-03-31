@@ -26,7 +26,7 @@ DailyDigest (Gold)           ← DailyDigestAgent
 ### 1. Install dependencies
 
 ```bash
-pip install anthropic
+pip install openai
 ```
 
 ### 2. Add to INSTALLED_APPS
@@ -45,11 +45,11 @@ INSTALLED_APPS = [
 ```python
 # settings.py
 
-ANTHROPIC_API_KEY = env('ANTHROPIC_API_KEY')  # required
+OPENAI_API_KEY = env('OPENAI_API_KEY')  # required
 
 # Optional: override default models
-ENRICHMENT_MODEL = 'claude-haiku-4-5-20251001'   # bulk article analysis
-DIGEST_MODEL     = 'claude-sonnet-4-5-20250929'  # daily digest synthesis
+ENRICHMENT_MODEL = 'gpt-4o-mini'  # bulk article analysis
+DIGEST_MODEL     = 'gpt-4o'       # daily digest synthesis
 ```
 
 ### 4. Update the app name reference
@@ -192,7 +192,7 @@ news_enrichment/
 ├── models.py             # ArticleEnrichment, EntityMention, DailyDigest, EnrichmentRun
 ├── agents.py             # ArticleAnalysisAgent, EntityExtractionAgent, DailyDigestAgent
 ├── services.py           # EnrichmentService (orchestrator)
-├── claude_client.py      # Anthropic API wrapper + cost tracking
+├── openai_client.py      # OpenAI API wrapper + cost tracking
 ├── prompts.py            # All LLM prompts (versioned here)
 ├── tasks.py              # Celery tasks
 ├── admin.py              # Django admin
@@ -214,7 +214,7 @@ news_enrichment/
 | 100 | ~$0.24  | ~$7.20  |
 | 300 | ~$0.72  | ~$21.60 |
 
-*Digest synthesis (Sonnet) adds ~$0.04-0.09/day regardless of volume.*
+*Digest synthesis (gpt-4o) adds ~$0.04-0.09/day regardless of volume.*
 
 ---
 
@@ -222,6 +222,6 @@ news_enrichment/
 
 | Variable | Required | Default | Description |
 |---|---|---|---|
-| `ANTHROPIC_API_KEY` | ✓ | — | Your Anthropic API key |
-| `ENRICHMENT_MODEL` | ✗ | `claude-haiku-4-5-20251001` | Model for article analysis |
-| `DIGEST_MODEL` | ✗ | `claude-sonnet-4-5-20250929` | Model for digest synthesis |
+| `OPENAI_API_KEY` | ✓ | — | Your OpenAI API key |
+| `ENRICHMENT_MODEL` | ✗ | `gpt-4o-mini` | Model for article analysis |
+| `DIGEST_MODEL` | ✗ | `gpt-4o` | Model for digest synthesis |
