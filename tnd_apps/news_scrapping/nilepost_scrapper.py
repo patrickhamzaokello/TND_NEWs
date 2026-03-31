@@ -44,7 +44,9 @@ def build_driver(headless: bool = True) -> webdriver.Chrome:
     options.add_experimental_option("excludeSwitches", ["enable-logging"])
     options.add_argument("--log-level=3")
 
-    driver = webdriver.Chrome(options=options)
+    options.binary_location = "/usr/bin/chromium"
+    service = Service(executable_path="/usr/bin/chromedriver")
+    driver = webdriver.Chrome(service=service, options=options)
     driver.set_page_load_timeout(45)
     return driver
 

@@ -1,5 +1,6 @@
 from selenium import webdriver
 from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.chrome.service import Service
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
@@ -41,8 +42,11 @@ class MonitorNewsDjangoScraper:
 
         user_agent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
         chrome_options.add_argument(f'user-agent={user_agent}')
+        chrome_options.add_argument("--disable-gpu")
 
-        self.driver = webdriver.Chrome(options=chrome_options)
+        chrome_options.binary_location = "/usr/bin/chromium"
+        service = Service(executable_path="/usr/bin/chromedriver")
+        self.driver = webdriver.Chrome(service=service, options=chrome_options)
         self.driver.execute_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
 
     def cleanup_selenium_driver(self):
