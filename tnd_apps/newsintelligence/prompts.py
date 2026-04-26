@@ -63,6 +63,29 @@ Return this exact JSON structure:
     "<concrete verifiable fact 2>",
     "<concrete verifiable fact 3>"
   ],
+  "claims": [
+    {{
+      "claim": "<specific factual claim from the article>",
+      "evidence_text": "<short source-text evidence supporting the claim>",
+      "confidence": <float 0.0-1.0>
+    }}
+  ],
+  "citations": [
+    {{
+      "title": "<source article title>",
+      "source": "{source}",
+      "evidence_text": "<short supporting source excerpt or close paraphrase>"
+    }}
+  ],
+  "local_impact": {{
+    "regions": ["<Ugandan region/district/place affected>"],
+    "affected_groups": ["<citizen/business/government groups affected>"],
+    "time_horizon": "immediate|weeks|months|unclear",
+    "impact_note": "<1-2 sentence explanation of likely local impact>"
+  }},
+  "bias_or_framing_notes": [
+    "<Specific note about source framing, missing context, allegations, or uncertainty. Omit generic criticism.>"
+  ],
   "related_themes": ["<broader ongoing story threads this article connects to, e.g. 'Northern Uganda security', 'NSSF reforms'>"],
   "entities": {{
     "people": ["<Full Name of every named individual>"],
@@ -170,6 +193,15 @@ Return this exact JSON structure:
     }}
   ],
 
+  "citations": [
+    {{
+      "article_id": <int — must match an article_id from the input>,
+      "title": "<article title>",
+      "source": "<source name>",
+      "evidence_text": "<short supporting evidence from the analyzed article payload>"
+    }}
+  ],
+
   "under_radar_story": {{
     "article_id": <int — must match an article_id from the input>,
     "title": "<article title>",
@@ -181,6 +213,7 @@ Return this exact JSON structure:
 
 RULES:
 - All article_id values must reference IDs from the input data. Do not invent IDs.
+- Every major claim in digest_text and why_it_matters must be supportable by at least one citation.
 - top_stories: include 3–5 stories. On low-volume days (<5 articles), include all genuinely significant ones only.
 - story_threads: only include threads with 2+ articles. Omit if none exist.
 - sector_sentiment: set to 0.0 for sectors with no coverage today — do not omit any sector.

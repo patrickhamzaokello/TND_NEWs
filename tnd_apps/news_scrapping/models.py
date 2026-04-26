@@ -1,17 +1,37 @@
 from django.db import models
+from django.contrib.postgres.indexes import GinIndex
+from django.contrib.postgres.search import SearchVectorField
 from django.utils import timezone
 from django.core.exceptions import ValidationError
 import uuid
+import hashlib
+import re
 from dateutil import parser
 from django.conf import settings
+from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
 
 
 class NewsSource(models.Model):
     """Model to track different news sources"""
+    RELIABILITY_CHOICES = [
+        ('high', 'High'),
+        ('medium', 'Medium'),
+        ('low', 'Low'),
+        ('unknown', 'Unknown'),
+    ]
+
     name = models.CharField(max_length=100, unique=True)
     base_url = models.URLField()
     news_url = models.URLField()
     is_active = models.BooleanField(default=True)
+    reliability_tier = models.CharField(max_length=20, choices=RELIABILITY_CHOICES, default='unknown')
+    ownership = models.CharField(max_length=200, blank=True)
+    editorial_notes = models.TextField(blank=True)
+    country = models.CharField(max_length=80, default='Uganda')
+    language = models.CharField(max_length=40, default='English')
+    scrape_config = models.JSONField(default=dict, blank=True)
+    last_successful_scrape_at = models.DateTimeField(null=True, blank=True)
+    failure_count = models.IntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -80,15 +100,27 @@ class Author(models.Model):
 class Article(models.Model):
     """Main model for news articles"""
 
+    SCRAPE_STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('partial', 'Partial'),
+        ('complete', 'Complete'),
+        ('failed', 'Failed'),
+    ]
+
     # Unique identifier and basic info
     external_id = models.CharField(max_length=50, db_index=True)  # post-46006
     url = models.URLField(unique=True, max_length=500)
+    canonical_url = models.URLField(max_length=500, blank=True)
+    source_published_id = models.CharField(max_length=120, blank=True)
     title = models.CharField(max_length=500)
     slug = models.SlugField(max_length=200, blank=True)
+    normalized_title_hash = models.CharField(max_length=64, blank=True)
 
     # Content
     excerpt = models.TextField(blank=True)
     content = models.TextField(blank=True)
+    content_hash = models.CharField(max_length=64, blank=True)
+    search_vector = SearchVectorField(null=True, blank=True)
     word_count = models.IntegerField(default=0)
     paragraph_count = models.IntegerField(default=0)
 
@@ -111,14 +143,48 @@ class Article(models.Model):
     # Status
     is_processed = models.BooleanField(default=False)
     has_full_content = models.BooleanField(default=False)
+    scrape_status = models.CharField(max_length=20, choices=SCRAPE_STATUS_CHOICES, default='pending')
+    last_scrape_error = models.TextField(blank=True)
 
     #read time
     read_time_minutes = models.IntegerField(default=0)
+
+    @staticmethod
+    def normalize_url(url):
+        if not url:
+            return ''
+        split = urlsplit(url.strip())
+        scheme = split.scheme.lower() or 'https'
+        netloc = split.netloc.lower()
+        if netloc.startswith('www.'):
+            netloc = netloc[4:]
+        path = split.path.rstrip('/') or '/'
+        ignored = {'utm_source', 'utm_medium', 'utm_campaign', 'utm_term', 'utm_content', 'fbclid', 'gclid'}
+        query_pairs = [(k, v) for k, v in parse_qsl(split.query, keep_blank_values=True) if k not in ignored]
+        query = urlencode(sorted(query_pairs))
+        return urlunsplit((scheme, netloc, path, query, ''))
+
+    @staticmethod
+    def _hash_text(text):
+        value = (text or '').strip()
+        if not value:
+            return ''
+        return hashlib.sha256(value.encode('utf-8')).hexdigest()
+
+    @staticmethod
+    def normalize_title(title):
+        return re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', (title or '').lower())).strip()
 
     def save(self, *args, **kwargs):
         if not self.slug and self.title:
             from django.utils.text import slugify
             self.slug = slugify(self.title)[:200]
+        self.canonical_url = self.normalize_url(self.url)
+        self.normalized_title_hash = self._hash_text(self.normalize_title(self.title))
+        self.content_hash = self._hash_text(self.content or self.excerpt)
+        if not self.source_published_id:
+            self.source_published_id = self.external_id or ''
+        self.scrape_status = 'complete' if self.has_full_content else self.scrape_status
         if self.word_count > 0:
             self.read_time_minutes = max(1, self.word_count // 200) #200-250 words per minute
         if self.published_time_str and not self.published_at:
@@ -127,7 +193,7 @@ class Article(models.Model):
             except:
                 pass # fallback to scraped_at
         if not self.published_at:
-            self.published_at = self.scraped_at
+            self.published_at = self.scraped_at or timezone.now()
             
         super().save(*args, **kwargs)
 
@@ -155,6 +221,14 @@ class Article(models.Model):
         indexes = [
             models.Index(fields=['external_id']),
             models.Index(fields=['url']),
+            models.Index(fields=['canonical_url']),
+            models.Index(fields=['source', 'source_published_id']),
+            models.Index(fields=['content_hash']),
+            models.Index(fields=['normalized_title_hash']),
+            models.Index(fields=['source', '-published_at']),
+            models.Index(fields=['category', '-published_at']),
+            models.Index(fields=['has_full_content', '-scraped_at']),
+            GinIndex(fields=['search_vector']),
             models.Index(fields=['scraped_at']),
             models.Index(fields=['published_time_str']),
         ]

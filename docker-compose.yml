@@ -23,7 +23,7 @@ services:
     container_name: tnd_postgres_container
     restart: unless-stopped
     ports:
-      - '127.0.0.1:5432:5432'  # ← CHANGED: Only accessible from localhost
+      - '127.0.0.1:${PG_HOST_PORT:-5433}:5432'
     networks:
       - tnd_network
     environment:
@@ -106,7 +106,7 @@ services:
     command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
     restart: unless-stopped
     ports:
-      - "127.0.0.1:6379:6379"  # ← CHANGED: Also secure Redis
+      - "127.0.0.1:${REDIS_HOST_PORT:-6380}:6379"
     networks:
       - tnd_network
     volumes:

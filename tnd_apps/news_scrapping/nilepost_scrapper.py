@@ -716,11 +716,12 @@ class NilePostScraper:
                         # --------------------------------------------------
                         external_id = self._external_id_from_url(article_url)
 
+                        canonical_url = Article.normalize_url(article_url)
                         existing = (
                             Article.objects.filter(external_id=external_id, source=self.source).first()
                             if external_id
-                            else Article.objects.filter(url=article_url).first()
-                        )
+                            else None
+                        ) or Article.objects.filter(canonical_url=canonical_url).first() or Article.objects.filter(url=article_url).first()
 
                         if existing:
                             if get_full_content and not existing.has_full_content:
@@ -849,6 +850,9 @@ class NilePostScraper:
             run.status = "completed"
             run.completed_at = timezone.now()
             run.save()
+            self.source.last_successful_scrape_at = run.completed_at
+            self.source.failure_count = 0
+            self.source.save(update_fields=["last_successful_scrape_at", "failure_count"])
 
             summary = (
                 f"Done. Added: {run.articles_added}, "
@@ -873,6 +877,8 @@ class NilePostScraper:
             run.error_message = str(exc)
             run.completed_at = timezone.now()
             run.save()
+            self.source.failure_count += 1
+            self.source.save(update_fields=["failure_count"])
             self._log(run, "error", f"Scraping failed: {exc}")
             raise
 

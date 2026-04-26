@@ -111,3 +111,17 @@ def generate_daily_digest(self, target_date_str: str = None):
     except Exception as exc:
         logger.exception("generate_daily_digest failed: %s", exc)
         raise self.retry(exc=exc)
+
+
+@shared_task(name='newsintelligence.tasks.build_story_clusters')
+def build_story_clusters(days: int = 7):
+    from django.core.management import call_command
+    call_command('build_story_clusters', f'--days={days}')
+    return {'status': 'ok', 'days': days}
+
+
+@shared_task(name='newsintelligence.tasks.send_story_alerts')
+def send_story_alerts(limit: int = 20):
+    from django.core.management import call_command
+    call_command('send_story_alerts', f'--limit={limit}')
+    return {'status': 'ok', 'limit': limit}

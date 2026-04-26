@@ -11,6 +11,7 @@ import logging
 from datetime import date, timedelta
 from typing import Optional
 
+from django.conf import settings
 from django.utils import timezone
 
 from .openai_client import (
@@ -19,7 +20,8 @@ from .openai_client import (
     call_openai,
     parse_json_response,
 )
-from .models import ArticleEnrichment, DailyDigest, EntityMention
+from .models import ArticleCitation, ArticleClaim, ArticleEnrichment, DailyDigest, EntityMention, Entity
+from .schemas import validate_article_analysis, validate_daily_digest
 from .prompts import (
     ARTICLE_ANALYSIS_SYSTEM,
     ARTICLE_ANALYSIS_USER,
@@ -108,6 +110,7 @@ class ArticleAnalysisAgent:
             max_tokens=1800,
         )
         parsed = parse_json_response(llm_response.content)
+        parsed = validate_article_analysis(parsed, article)
         parsed['_meta'] = {
             'input_tokens':  llm_response.input_tokens,
             'output_tokens': llm_response.output_tokens,
@@ -141,6 +144,10 @@ class ArticleAnalysisAgent:
         enrichment.importance_score = data.get('importance_score')
         enrichment.themes           = data.get('themes', [])
         enrichment.key_facts        = data.get('key_facts', [])
+        enrichment.claims           = data.get('claims', [])
+        enrichment.citations        = data.get('citations', [])
+        enrichment.local_impact     = data.get('local_impact', {})
+        enrichment.bias_or_framing_notes = data.get('bias_or_framing_notes', [])
         enrichment.related_themes   = data.get('related_themes', [])
 
         enrichment.entities_people        = entities.get('people', [])
@@ -163,6 +170,33 @@ class ArticleAnalysisAgent:
         enrichment.error_message      = ''
 
         enrichment.save()
+
+        ArticleClaim.objects.filter(enrichment=enrichment).delete()
+        ArticleCitation.objects.filter(enrichment=enrichment).delete()
+
+        ArticleClaim.objects.bulk_create([
+            ArticleClaim(
+                article=enrichment.article,
+                enrichment=enrichment,
+                claim_text=claim.get('claim', ''),
+                evidence_text=claim.get('evidence_text', ''),
+                confidence=claim.get('confidence', 0.0),
+            )
+            for claim in enrichment.claims
+            if claim.get('claim')
+        ])
+
+        ArticleCitation.objects.bulk_create([
+            ArticleCitation(
+                article=enrichment.article,
+                enrichment=enrichment,
+                url=citation.get('url') or enrichment.article.url,
+                title=citation.get('title') or enrichment.article.title,
+                source_name=citation.get('source') or enrichment.article.source.name,
+                evidence_text=citation.get('evidence_text', ''),
+            )
+            for citation in enrichment.citations
+        ])
 
 
 # ── Agent 2: Entity Extraction ────────────────────────────────────────────────
@@ -195,6 +229,11 @@ class EntityExtractionAgent:
         for entity_type, entity_list in entity_map.items():
             for name in entity_list:
                 if name and name.strip():
+                    canonical, _ = Entity.objects.get_or_create(
+                        normalized_name=name.strip().lower(),
+                        entity_type=entity_type,
+                        defaults={'name': name.strip()},
+                    )
                     mentions.append(EntityMention(
                         enrichment=enrichment,
                         entity_name=name.strip(),
@@ -280,6 +319,8 @@ class DailyDigestAgent:
                 'importance': e.importance_score,
                 'themes':    e.themes,
                 'key_facts': e.key_facts[:3],
+                'citations': e.citations[:3],
+                'local_impact': e.local_impact,
                 'follow_up': e.follow_up_worthy,
             }
             for e in enrichments
@@ -302,6 +343,7 @@ class DailyDigestAgent:
             max_tokens=3000,
         )
         parsed = parse_json_response(llm_response.content)
+        parsed = validate_daily_digest(parsed, [e.article_id for e in enrichments])
         parsed['_meta'] = {
             'input_tokens':  llm_response.input_tokens,
             'output_tokens': llm_response.output_tokens,
@@ -317,6 +359,7 @@ class DailyDigestAgent:
         digest.trending_entities = data.get('trending_entities', [])
         digest.sector_sentiment  = data.get('sector_sentiment', {})
         digest.story_threads     = data.get('story_threads', [])
+        digest.citations         = data.get('citations', [])
         digest.under_radar_story = data.get('under_radar_story', {})
         digest.key_concern       = data.get('key_concern', '')
 
@@ -325,6 +368,11 @@ class DailyDigestAgent:
         digest.output_tokens_used = meta.get('output_tokens', 0)
         digest.model_used         = meta.get('model', '')
         digest.generated_at       = timezone.now()
-        digest.is_published       = True
+        if getattr(settings, 'DIGEST_AUTO_PUBLISH', True):
+            digest.editorial_review_status = 'approved'
+            digest.is_published = True
+        else:
+            digest.editorial_review_status = data.get('editorial_review_status', 'needs_review')
+            digest.is_published = digest.editorial_review_status == 'approved'
 
         digest.save()

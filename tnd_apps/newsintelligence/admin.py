@@ -1,7 +1,20 @@
 from django.contrib import admin
 from django.utils.html import format_html
 
-from .models import ArticleEnrichment, DailyDigest, EntityMention, EnrichmentRun
+from .models import (
+    ArticleCitation,
+    ArticleClaim,
+    ArticleEnrichment,
+    DailyDigest,
+    Entity,
+    EntityMention,
+    EnrichmentRun,
+    SourcePerspective,
+    StoryAlert,
+    StoryCluster,
+    StoryClusterArticle,
+    StoryTimelineEvent,
+)
 
 
 @admin.register(ArticleEnrichment)
@@ -26,7 +39,8 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
         ('AI Analysis', {
             'fields': (
                 'summary', 'sentiment', 'sentiment_score', 'importance_score',
-                'themes', 'key_facts', 'related_themes',
+                'themes', 'key_facts', 'claims', 'citations',
+                'local_impact', 'bias_or_framing_notes', 'related_themes',
             )
         }),
         ('Entities', {
@@ -74,15 +88,67 @@ class EntityMentionAdmin(admin.ModelAdmin):
 class DailyDigestAdmin(admin.ModelAdmin):
     list_display = (
         'digest_date', 'articles_analyzed', 'is_published',
-        'generated_at', 'token_info'
+        'editorial_review_status', 'generated_at', 'token_info'
     )
-    list_filter = ('is_published',)
+    list_filter = ('is_published', 'editorial_review_status')
     readonly_fields = ('generated_at', 'created_at')
     ordering = ('-digest_date',)
 
     def token_info(self, obj):
         return f'in:{obj.input_tokens_used:,} out:{obj.output_tokens_used:,}'
     token_info.short_description = 'Tokens'
+
+
+@admin.register(Entity)
+class EntityAdmin(admin.ModelAdmin):
+    list_display = ('name', 'entity_type', 'updated_at')
+    list_filter = ('entity_type',)
+    search_fields = ('name', 'aliases')
+
+
+class StoryClusterArticleInline(admin.TabularInline):
+    model = StoryClusterArticle
+    extra = 0
+
+
+class StoryTimelineEventInline(admin.TabularInline):
+    model = StoryTimelineEvent
+    extra = 0
+
+
+@admin.register(StoryCluster)
+class StoryClusterAdmin(admin.ModelAdmin):
+    list_display = ('title', 'status', 'primary_theme', 'importance_score', 'last_seen_at')
+    list_filter = ('status', 'primary_theme')
+    search_fields = ('title', 'summary', 'why_this_matters')
+    prepopulated_fields = {'slug': ('title',)}
+    inlines = [StoryClusterArticleInline, StoryTimelineEventInline]
+
+
+@admin.register(SourcePerspective)
+class SourcePerspectiveAdmin(admin.ModelAdmin):
+    list_display = ('cluster', 'source', 'article', 'sentiment_score', 'created_at')
+    list_filter = ('source',)
+    search_fields = ('cluster__title', 'article__title', 'framing_summary')
+
+
+@admin.register(StoryAlert)
+class StoryAlertAdmin(admin.ModelAdmin):
+    list_display = ('title', 'cluster', 'importance_score', 'status', 'created_at', 'sent_at')
+    list_filter = ('status', 'importance_score')
+    search_fields = ('title', 'reason', 'cluster__title', 'article__title')
+
+
+@admin.register(ArticleClaim)
+class ArticleClaimAdmin(admin.ModelAdmin):
+    list_display = ('article', 'confidence', 'created_at')
+    search_fields = ('article__title', 'claim_text', 'evidence_text')
+
+
+@admin.register(ArticleCitation)
+class ArticleCitationAdmin(admin.ModelAdmin):
+    list_display = ('article', 'source_name', 'created_at')
+    search_fields = ('article__title', 'title', 'url', 'evidence_text')
 
 
 @admin.register(EnrichmentRun)

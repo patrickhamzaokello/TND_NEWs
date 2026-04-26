@@ -3,7 +3,11 @@ import jwt
 import json
 import requests
 from django.conf import settings
-from jwt.algorithms import RSAAlgorithm
+
+try:
+    from jwt.algorithms import RSAAlgorithm
+except ImportError:
+    RSAAlgorithm = None
 
 
 class Apple:
@@ -35,6 +39,11 @@ class Apple:
             key = apple_public_keys[key_id]
 
             # Convert JWK to RSA public key
+            if RSAAlgorithm is None:
+                raise ValueError(
+                    "Apple Sign-In requires PyJWT with cryptography support. "
+                    "Install/repair cryptography and PyJWT in the runtime."
+                )
             apple_public_key = RSAAlgorithm.from_jwk(json.dumps(key))
 
             # Get the audience (client ID) from settings

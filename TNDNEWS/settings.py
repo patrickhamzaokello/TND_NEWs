@@ -23,6 +23,7 @@ OPENAI_API_KEY = config('OPENAI_API_KEY')  # required
 # Optional: override default models
 ENRICHMENT_MODEL = 'gpt-4o-mini'   # bulk article analysis
 DIGEST_MODEL     = 'gpt-4o-mini'  # daily digest synthesis
+DIGEST_AUTO_PUBLISH = config('DIGEST_AUTO_PUBLISH', default=True, cast=bool)
 
 ALLOWED_HOSTS = [
     'newsapi.mwonya.com',
@@ -42,6 +43,13 @@ APPLE_CLIENT_ID = "com.newsapi.mwonya"
 APPLE_CLIENT_IDS = ["com.newsapi.mwonya", "other.client.id"]  # List of valid client IDs
 
 CSRF_TRUSTED_ORIGINS = ["https://newsapi.mwonya.com"]
+SESSION_COOKIE_SECURE = config('SESSION_COOKIE_SECURE', default=not DEBUG, cast=bool)
+CSRF_COOKIE_SECURE = config('CSRF_COOKIE_SECURE', default=not DEBUG, cast=bool)
+SECURE_SSL_REDIRECT = config('SECURE_SSL_REDIRECT', default=not DEBUG, cast=bool)
+SECURE_HSTS_SECONDS = config('SECURE_HSTS_SECONDS', default=31536000 if not DEBUG else 0, cast=int)
+SECURE_HSTS_INCLUDE_SUBDOMAINS = config('SECURE_HSTS_INCLUDE_SUBDOMAINS', default=not DEBUG, cast=bool)
+SECURE_HSTS_PRELOAD = config('SECURE_HSTS_PRELOAD', default=False, cast=bool)
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
 
 AUTH_USER_MODEL = 'authentication.User'
 # Application definition
@@ -152,7 +160,8 @@ CELERY_BEAT_SCHEDULER = 'django_celery_beat.schedulers:DatabaseScheduler'
 
 # Task routing
 CELERY_TASK_ROUTES = {
-    'news_scrapping.tasks.*': {'queue': 'news_scraping'},
+    'tnd_apps.news_scrapping.tasks.*': {'queue': 'news_scraping'},
+    'newsintelligence.tasks.*': {'queue': 'news_intelligence'},
     'tndvideo.tasks.process_video_task': {'queue': 'video_processing'},
     'tndvideo.tasks.process_queued_videos': {'queue': 'process_queued_videos'},
     'tndvideo.tasks.cleanup_*': {'queue': 'maintenance'},
@@ -204,9 +213,20 @@ REST_FRAMEWORK = {
     'DEFAULT_PAGINATION_CLASS': 'rest_framework.pagination.PageNumberPagination',
     'PAGE_SIZE': 10,
     'NON_FIELD_ERRORS_KEY': 'error',
+    'DEFAULT_PERMISSION_CLASSES': (
+        'rest_framework.permissions.IsAuthenticated',
+    ),
     'DEFAULT_AUTHENTICATION_CLASSES': (
         'rest_framework_simplejwt.authentication.JWTAuthentication',
-    )
+    ),
+    'DEFAULT_THROTTLE_CLASSES': (
+        'rest_framework.throttling.UserRateThrottle',
+        'rest_framework.throttling.AnonRateThrottle',
+    ),
+    'DEFAULT_THROTTLE_RATES': {
+        'user': config('DRF_USER_THROTTLE_RATE', default='1000/hour'),
+        'anon': config('DRF_ANON_THROTTLE_RATE', default='100/hour'),
+    },
 }
 
 SIMPLE_JWT = {
@@ -262,6 +282,12 @@ EMAIL_PORT = config('EMAIL_PORT')  #465 (or 587 for TLS)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 EMAIL_PLUNK_API_KEY = config('EMAIL_PLUNK_API_KEY')
+NOTIFICATION_SERVICE_URL = config(
+    'NOTIFICATION_SERVICE_URL',
+    default='http://notification-service:4000/api/push-notification'
+)
+SENTRY_DSN = config('SENTRY_DSN', default='')
+OTEL_SERVICE_NAME = config('OTEL_SERVICE_NAME', default='tndnews-backend')
 
 # Default primary key field type
 # https://docs.djangoproject.com/en/5.2/ref/settings/#default-auto-field
@@ -317,3 +343,19 @@ LOGGING = {
         },
     },
 }
+
+if SENTRY_DSN:
+    try:
+        import sentry_sdk
+        from sentry_sdk.integrations.django import DjangoIntegration
+        from sentry_sdk.integrations.celery import CeleryIntegration
+
+        sentry_sdk.init(
+            dsn=SENTRY_DSN,
+            integrations=[DjangoIntegration(), CeleryIntegration()],
+            traces_sample_rate=float(config('SENTRY_TRACES_SAMPLE_RATE', default='0.05')),
+            send_default_pii=False,
+            environment=config('APP_ENV', default='production'),
+        )
+    except ImportError:
+        pass

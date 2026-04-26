@@ -1,6 +1,5 @@
 from django.db import models
 from django.utils import timezone
-from django.contrib.postgres.fields import ArrayField
 
 
 class ArticleEnrichment(models.Model):
@@ -62,6 +61,22 @@ class ArticleEnrichment(models.Model):
     key_facts = models.JSONField(
         default=list, blank=True,
         help_text="Bullet-point facts extracted from the article"
+    )
+    claims = models.JSONField(
+        default=list, blank=True,
+        help_text="Grounded claims with evidence and confidence"
+    )
+    citations = models.JSONField(
+        default=list, blank=True,
+        help_text="Source references used by AI outputs"
+    )
+    local_impact = models.JSONField(
+        default=dict, blank=True,
+        help_text="Uganda/local impact analysis by region, group, and time horizon"
+    )
+    bias_or_framing_notes = models.JSONField(
+        default=list, blank=True,
+        help_text="Observed framing or perspective notes for source-aware analysis"
     )
     related_themes = models.JSONField(
         default=list, blank=True,
@@ -163,6 +178,13 @@ class EntityMention(models.Model):
         blank=True,
         help_text="Short excerpt showing how entity was mentioned"
     )
+    normalized_name = models.CharField(max_length=200, blank=True, db_index=True)
+    salience = models.FloatField(null=True, blank=True)
+
+    def save(self, *args, **kwargs):
+        if not self.normalized_name:
+            self.normalized_name = self.entity_name.lower().strip()
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.entity_type}: {self.entity_name} ({self.mention_date})"
@@ -203,6 +225,10 @@ class DailyDigest(models.Model):
         default=list, blank=True,
         help_text="Ongoing multi-day stories to watch"
     )
+    citations = models.JSONField(
+        default=list, blank=True,
+        help_text="Source references used in digest_text and story summaries"
+    )
     under_radar_story = models.JSONField(
         default=dict, blank=True,
         help_text="One article that deserves more attention"
@@ -220,6 +246,18 @@ class DailyDigest(models.Model):
 
     # Generation state
     is_published = models.BooleanField(default=False)
+    editorial_review_status = models.CharField(
+        max_length=20,
+        choices=[
+            ('draft', 'Draft'),
+            ('needs_review', 'Needs Review'),
+            ('approved', 'Approved'),
+            ('rejected', 'Rejected'),
+        ],
+        default='needs_review',
+    )
+    reviewed_by = models.CharField(max_length=120, blank=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
     generated_at = models.DateTimeField(null=True, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
 
@@ -229,6 +267,184 @@ class DailyDigest(models.Model):
     class Meta:
         db_table = 'daily_digests'
         ordering = ['-digest_date']
+        indexes = [
+            models.Index(fields=['is_published', '-digest_date']),
+            models.Index(fields=['editorial_review_status', '-digest_date']),
+        ]
+
+
+class Entity(models.Model):
+    """Canonical entity with aliases across sources and articles."""
+
+    ENTITY_TYPES = EntityMention.ENTITY_TYPES
+
+    name = models.CharField(max_length=200)
+    normalized_name = models.CharField(max_length=200, db_index=True)
+    entity_type = models.CharField(max_length=20, choices=ENTITY_TYPES)
+    aliases = models.JSONField(default=list, blank=True)
+    description = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.normalized_name:
+            self.normalized_name = self.name.lower().strip()
+        super().save(*args, **kwargs)
+
+    def __str__(self):
+        return f"{self.name} ({self.entity_type})"
+
+    class Meta:
+        db_table = 'entities'
+        unique_together = ['normalized_name', 'entity_type']
+        indexes = [
+            models.Index(fields=['entity_type', 'normalized_name']),
+        ]
+
+
+class StoryCluster(models.Model):
+    """Groups related articles from multiple sources into one evolving story."""
+
+    STATUS_CHOICES = [
+        ('active', 'Active'),
+        ('dormant', 'Dormant'),
+        ('resolved', 'Resolved'),
+    ]
+
+    title = models.CharField(max_length=300)
+    slug = models.SlugField(max_length=320, unique=True)
+    summary = models.TextField(blank=True)
+    why_this_matters = models.TextField(blank=True)
+    local_impact = models.JSONField(default=dict, blank=True)
+    primary_theme = models.CharField(max_length=80, blank=True)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='active')
+    importance_score = models.IntegerField(default=0)
+    first_seen_at = models.DateTimeField(default=timezone.now)
+    last_seen_at = models.DateTimeField(default=timezone.now)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def __str__(self):
+        return self.title
+
+    class Meta:
+        db_table = 'story_clusters'
+        ordering = ['-last_seen_at', '-importance_score']
+        indexes = [
+            models.Index(fields=['status', '-last_seen_at']),
+            models.Index(fields=['primary_theme', '-last_seen_at']),
+            models.Index(fields=['importance_score']),
+        ]
+
+
+class StoryClusterArticle(models.Model):
+    cluster = models.ForeignKey(StoryCluster, on_delete=models.CASCADE, related_name='cluster_articles')
+    article = models.ForeignKey('news_scrapping.Article', on_delete=models.CASCADE, related_name='story_cluster_links')
+    relevance_score = models.FloatField(default=1.0)
+    perspective_label = models.CharField(max_length=120, blank=True)
+    added_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'story_cluster_articles'
+        unique_together = ['cluster', 'article']
+        indexes = [
+            models.Index(fields=['cluster', '-relevance_score']),
+            models.Index(fields=['article']),
+        ]
+
+
+class StoryTimelineEvent(models.Model):
+    cluster = models.ForeignKey(StoryCluster, on_delete=models.CASCADE, related_name='timeline_events')
+    event_date = models.DateTimeField()
+    title = models.CharField(max_length=240)
+    description = models.TextField()
+    article = models.ForeignKey('news_scrapping.Article', on_delete=models.SET_NULL, null=True, blank=True)
+    citations = models.JSONField(default=list, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'story_timeline_events'
+        ordering = ['event_date']
+        indexes = [
+            models.Index(fields=['cluster', 'event_date']),
+        ]
+
+
+class SourcePerspective(models.Model):
+    cluster = models.ForeignKey(StoryCluster, on_delete=models.CASCADE, related_name='source_perspectives')
+    source = models.ForeignKey('news_scrapping.NewsSource', on_delete=models.CASCADE)
+    article = models.ForeignKey('news_scrapping.Article', on_delete=models.CASCADE)
+    framing_summary = models.TextField(blank=True)
+    notable_emphasis = models.JSONField(default=list, blank=True)
+    omitted_context = models.JSONField(default=list, blank=True)
+    sentiment_score = models.FloatField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'source_perspectives'
+        unique_together = ['cluster', 'source', 'article']
+        indexes = [
+            models.Index(fields=['cluster', 'source']),
+        ]
+
+
+class StoryAlert(models.Model):
+    """Tracks high-signal updates that should trigger user alerts."""
+
+    STATUS_CHOICES = [
+        ('pending', 'Pending'),
+        ('sent', 'Sent'),
+        ('suppressed', 'Suppressed'),
+    ]
+
+    cluster = models.ForeignKey(StoryCluster, on_delete=models.CASCADE, related_name='alerts')
+    article = models.ForeignKey('news_scrapping.Article', on_delete=models.CASCADE)
+    title = models.CharField(max_length=240)
+    reason = models.TextField()
+    importance_score = models.IntegerField(default=0)
+    status = models.CharField(max_length=20, choices=STATUS_CHOICES, default='pending')
+    created_at = models.DateTimeField(auto_now_add=True)
+    sent_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        db_table = 'story_alerts'
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['cluster', '-created_at']),
+        ]
+
+
+class ArticleClaim(models.Model):
+    article = models.ForeignKey('news_scrapping.Article', on_delete=models.CASCADE, related_name='claims')
+    enrichment = models.ForeignKey(ArticleEnrichment, on_delete=models.SET_NULL, null=True, blank=True)
+    claim_text = models.TextField()
+    evidence_text = models.TextField(blank=True)
+    confidence = models.FloatField(default=0.0)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'article_claims'
+        indexes = [
+            models.Index(fields=['article']),
+            models.Index(fields=['confidence']),
+        ]
+
+
+class ArticleCitation(models.Model):
+    article = models.ForeignKey('news_scrapping.Article', on_delete=models.CASCADE, related_name='citations')
+    enrichment = models.ForeignKey(ArticleEnrichment, on_delete=models.SET_NULL, null=True, blank=True)
+    url = models.URLField(max_length=500)
+    title = models.CharField(max_length=500)
+    source_name = models.CharField(max_length=120, blank=True)
+    evidence_text = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'article_citations'
+        indexes = [
+            models.Index(fields=['article']),
+            models.Index(fields=['source_name']),
+        ]
 
 
 class EnrichmentRun(models.Model):

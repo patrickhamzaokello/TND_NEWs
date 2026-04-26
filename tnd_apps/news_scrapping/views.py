@@ -2,16 +2,16 @@
 from rest_framework import serializers, viewsets, status, generics, status, views
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated
-from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value
+from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
+from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value, Sum
 from django.db.models.functions import Greatest
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
-from django.contrib.postgres.search import SearchVector, SearchQuery, SearchRank
-from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, UserNotification
-from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleViewSerializer, UserProfileSerializer, \
-    CommentSerializer, CategorySerializer, NotificationStatsSerializer, UserNotificationSerializer
+from django.contrib.postgres.search import SearchQuery, SearchRank
+from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, UserNotification, ScrapingRun
+from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleListSerializer, ArticleViewSerializer, UserProfileSerializer, \
+    CommentSerializer, CategorySerializer, NotificationStatsSerializer, UserNotificationSerializer, SourceHealthSerializer
 from datetime import datetime, timedelta
 import re
 
@@ -20,6 +20,24 @@ from .serializers import (
     PushTokenCreateSerializer,
     TokenUpdateUsageSerializer
 )
+
+
+class IsAdminOrReadOnly(IsAuthenticated):
+    """Authenticated users can read; only staff can mutate catalog/news data."""
+
+    allowed_user_actions = {
+        'follow', 'unfollow', 'subscribe', 'unsubscribe',
+        'view', 'comments', 'batch',
+    }
+
+    def has_permission(self, request, view):
+        if not super().has_permission(request, view):
+            return False
+        if request.method in SAFE_METHODS:
+            return True
+        if getattr(view, 'action', None) in self.allowed_user_actions:
+            return True
+        return bool(request.user and request.user.is_staff)
 
 
 class CategoriesPagination(PageNumberPagination):
@@ -64,7 +82,7 @@ class ArticleSearchPagination(PageNumberPagination):
 class NewsSourceViewSet(viewsets.ModelViewSet):
     queryset = NewsSource.objects.filter(is_active=True)
     serializer_class = NewsSourceSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
 
     @action(detail=True, methods=['post'])
     def follow(self, request, pk=None):
@@ -80,11 +98,44 @@ class NewsSourceViewSet(viewsets.ModelViewSet):
         profile.followed_sources.remove(source)
         return Response({'status': 'unfollowed'}, status=status.HTTP_200_OK)
 
+    @action(detail=False, methods=['get'])
+    def health(self, request):
+        """Source scrape health dashboard for operations/mobile admin views."""
+        now = timezone.now()
+        day_ago = now - timedelta(hours=24)
+        payload = []
+
+        for source in NewsSource.objects.all().order_by('name'):
+            latest_run = ScrapingRun.objects.filter(source=source).order_by('-started_at').first()
+            articles_24h = Article.objects.filter(source=source, scraped_at__gte=day_ago).count()
+            full_content_24h = Article.objects.filter(
+                source=source,
+                scraped_at__gte=day_ago,
+                has_full_content=True,
+            ).count()
+            error_count_24h = ScrapingRun.objects.filter(
+                source=source,
+                started_at__gte=day_ago,
+            ).aggregate(total_errors=Sum('error_count'))['total_errors'] or 0
+
+            payload.append({
+                'source': source,
+                'latest_run_status': latest_run.status if latest_run else None,
+                'latest_run_started_at': latest_run.started_at if latest_run else None,
+                'latest_run_completed_at': latest_run.completed_at if latest_run else None,
+                'latest_run_error': latest_run.error_message if latest_run else '',
+                'articles_24h': articles_24h,
+                'full_content_24h': full_content_24h,
+                'error_count_24h': error_count_24h,
+            })
+
+        return Response(SourceHealthSerializer(payload, many=True).data)
+
 
 class CategoryViewSet(viewsets.ModelViewSet):
     queryset = Category.objects.all()
     serializer_class = CategorySerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
     pagination_class = CategoriesPagination
 
     @action(detail=True, methods=['post'])
@@ -105,15 +156,25 @@ class CategoryViewSet(viewsets.ModelViewSet):
 class ArticleViewSet(viewsets.ModelViewSet):
     queryset = Article.objects.all()
     serializer_class = ArticleSerializer
-    permission_classes = [IsAuthenticated]
+    permission_classes = [IsAdminOrReadOnly]
     pagination_class = ArticleSearchPagination
+
+    def get_serializer_class(self):
+        if self.action in {'list', 'latest', 'featured', 'top_reads', 'trending', 'search', 'batch'}:
+            return ArticleListSerializer
+        return ArticleSerializer
 
     def get_queryset(self):
         user = self.request.user
         profile = UserProfile.objects.filter(user=user).first()
+        base = self.queryset.select_related(
+            'source', 'category', 'author', 'enrichment'
+        ).prefetch_related('tags').annotate(
+            view_count=Count('views', distinct=True)
+        )
         if profile and profile.followed_sources.exists():
-            return self.queryset.filter(source__in=profile.followed_sources.all())
-        return self.queryset.filter(source__is_active=True)
+            return base.filter(source__in=profile.followed_sources.all())
+        return base.filter(source__is_active=True)
 
     def _calculate_article_score(self, queryset, recency_weight=0.4, engagement_weight=0.3,
                                  quality_weight=0.3, time_window_hours=48):
@@ -381,16 +442,11 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # Try PostgreSQL full-text search if available
         try:
             # Full-text search with ranking
-            search_vector = SearchVector('title', weight='A') + \
-                            SearchVector('excerpt', weight='B') + \
-                            SearchVector('content', weight='C')
-
             search_query = SearchQuery(query)
 
             queryset = queryset.annotate(
-                search=search_vector,
-                rank=SearchRank(search_vector, search_query)
-            ).filter(search=search_query)
+                rank=SearchRank(F('search_vector'), search_query)
+            ).filter(search_vector=search_query)
 
             return queryset
 
@@ -427,14 +483,16 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
         if sort_by == 'relevance':
             # If using PostgreSQL search with rank, sort by rank
-            if hasattr(queryset.model, 'rank'):
+            if 'rank' in getattr(queryset.query, 'annotations', {}):
                 return queryset.order_by('-rank', '-scraped_at')
             else:
                 # Fallback: prioritize title matches, then date
-                return queryset.extra(
-                    select={
-                        'title_match': f"CASE WHEN LOWER(title) LIKE LOWER('%%{query}%%') THEN 1 ELSE 0 END"
-                    }
+                return queryset.annotate(
+                    title_match=Case(
+                        When(title__icontains=query, then=Value(1)),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
                 ).order_by('-title_match', '-scraped_at')
 
         elif sort_by == 'date_desc':

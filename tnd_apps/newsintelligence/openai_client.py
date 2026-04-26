@@ -81,6 +81,7 @@ def call_openai(
             response = client.chat.completions.create(
                 model=model,
                 max_completion_tokens=max_tokens,
+                response_format={'type': 'json_object'},
                 messages=[
                     {'role': 'system', 'content': system},
                     {'role': 'user', 'content': user},

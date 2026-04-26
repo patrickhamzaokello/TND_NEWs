@@ -12,7 +12,7 @@ celery_app.conf.timezone = 'UTC'
 
 celery_app.conf.beat_schedule = {
     'send-scheduled-notifications': {
-        'task': 'news_scrapping.tasks.send_scheduled_notifications',
+        'task': 'tnd_apps.news_scrapping.tasks.send_scheduled_notifications',
         'schedule': crontab(minute='*/15'),  # Every 15 minutes
     },
     'process-queued-videos': {
@@ -28,11 +28,11 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
     },
     'cleanup-failed-tasks': {
-        'task': 'news_scrapping.tasks.check_for_news',
+        'task': 'tnd_apps.news_scrapping.tasks.health_check_task',
         'schedule': 300.0,  # Run every 5 minutes
     },
     'cleanup-old-notifications': {
-        'task': 'news_scrapping.tasks.cleanup_old_notifications',
+        'task': 'tnd_apps.news_scrapping.tasks.cleanup_old_notifications',
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
     },
 'enrich-articles-hourly': {
@@ -46,6 +46,14 @@ celery_app.conf.beat_schedule = {
     'generate-daily-digest': {
         'task': 'newsintelligence.tasks.generate_daily_digest',
         'schedule': crontab(minute=0, hour=3),
+    },
+    'build-story-clusters-hourly': {
+        'task': 'newsintelligence.tasks.build_story_clusters',
+        'schedule': crontab(minute=45),
+    },
+    'send-story-alerts': {
+        'task': 'newsintelligence.tasks.send_story_alerts',
+        'schedule': crontab(minute='*/10'),
     },
   'scrape-nilepost-news': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',

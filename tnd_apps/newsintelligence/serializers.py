@@ -1,5 +1,5 @@
 from rest_framework import serializers
-from .models import DailyDigest
+from .models import DailyDigest, Entity, StoryAlert, StoryCluster, StoryTimelineEvent, SourcePerspective
 from ..news_scrapping.models import Article
 
 
@@ -105,6 +105,7 @@ class DailyDigestDetailSerializer(serializers.ModelSerializer):
             'trending_entities',
             'sector_sentiment',
             'story_threads',
+            'citations',
             'under_radar_story',
             'key_concern',
             'articles_analyzed',
@@ -112,6 +113,9 @@ class DailyDigestDetailSerializer(serializers.ModelSerializer):
             'output_tokens_used',
             'model_used',
             'is_published',
+            'editorial_review_status',
+            'reviewed_by',
+            'reviewed_at',
             'generated_at',
             'created_at',
         ]
@@ -160,3 +164,76 @@ class DailyDigestDetailSerializer(serializers.ModelSerializer):
         if aid is not None:
             entry['article'] = article_map.get(aid)
         return entry
+
+
+class EntitySerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Entity
+        fields = ['id', 'name', 'normalized_name', 'entity_type', 'aliases', 'description']
+
+
+class SourcePerspectiveSerializer(serializers.ModelSerializer):
+    source_name = serializers.CharField(source='source.name', read_only=True)
+    article_title = serializers.CharField(source='article.title', read_only=True)
+    article_url = serializers.CharField(source='article.url', read_only=True)
+
+    class Meta:
+        model = SourcePerspective
+        fields = [
+            'id', 'source', 'source_name', 'article', 'article_title',
+            'article_url', 'framing_summary', 'notable_emphasis',
+            'omitted_context', 'sentiment_score', 'created_at',
+        ]
+
+
+class StoryTimelineEventSerializer(serializers.ModelSerializer):
+    article = ArticleSnippetSerializer(read_only=True)
+
+    class Meta:
+        model = StoryTimelineEvent
+        fields = ['id', 'event_date', 'title', 'description', 'article', 'citations', 'created_at']
+
+
+class StoryClusterListSerializer(serializers.ModelSerializer):
+    article_count = serializers.IntegerField(read_only=True)
+    source_count = serializers.IntegerField(read_only=True)
+
+    class Meta:
+        model = StoryCluster
+        fields = [
+            'id', 'title', 'slug', 'summary', 'why_this_matters',
+            'local_impact', 'primary_theme', 'status', 'importance_score',
+            'first_seen_at', 'last_seen_at', 'article_count', 'source_count',
+        ]
+
+
+class StoryClusterDetailSerializer(StoryClusterListSerializer):
+    articles = serializers.SerializerMethodField()
+    timeline = serializers.SerializerMethodField()
+    perspectives = SourcePerspectiveSerializer(source='source_perspectives', many=True, read_only=True)
+
+    class Meta(StoryClusterListSerializer.Meta):
+        fields = StoryClusterListSerializer.Meta.fields + ['articles', 'timeline', 'perspectives']
+
+    def get_articles(self, obj):
+        articles = [
+            link.article
+            for link in obj.cluster_articles.select_related('article__source', 'article__category', 'article__author').all()
+        ]
+        return ArticleSnippetSerializer(articles, many=True).data
+
+    def get_timeline(self, obj):
+        events = obj.timeline_events.select_related('article__source', 'article__category', 'article__author').all()
+        return StoryTimelineEventSerializer(events, many=True).data
+
+
+class StoryAlertSerializer(serializers.ModelSerializer):
+    article = ArticleSnippetSerializer(read_only=True)
+    cluster_title = serializers.CharField(source='cluster.title', read_only=True)
+
+    class Meta:
+        model = StoryAlert
+        fields = [
+            'id', 'cluster', 'cluster_title', 'article', 'title', 'reason',
+            'importance_score', 'status', 'created_at', 'sent_at',
+        ]

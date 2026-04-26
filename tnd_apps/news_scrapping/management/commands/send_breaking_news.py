@@ -240,7 +240,8 @@ class Command(BaseCommand):
         try:
             import requests
 
-            api_url = 'http://notification-service:4000/api/push-notification'
+            from django.conf import settings
+            api_url = settings.NOTIFICATION_SERVICE_URL
             batch_size = 100
             success_count = 0
 

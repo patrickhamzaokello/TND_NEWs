@@ -5,7 +5,11 @@ from .models import NewsSource, Comment, Category, Tag, Author, Article, UserPro
 class NewsSourceSerializer(serializers.ModelSerializer):
     class Meta:
         model = NewsSource
-        fields = ['id', 'name', 'base_url', 'news_url', 'is_active']
+        fields = [
+            'id', 'name', 'base_url', 'news_url', 'is_active',
+            'reliability_tier', 'ownership', 'editorial_notes',
+            'country', 'language', 'last_successful_scrape_at', 'failure_count'
+        ]
 
 
 class CategorySerializer(serializers.ModelSerializer):
@@ -28,24 +32,56 @@ class AuthorSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'profile_url', 'source']
 
 
-class ArticleSerializer(serializers.ModelSerializer):
+class ArticleListSerializer(serializers.ModelSerializer):
     source = NewsSourceSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
-    author = AuthorSerializer(read_only=True)
-    tags = TagSerializer(many=True, read_only=True)
-    view_count = serializers.SerializerMethodField()
-
-    def get_view_count(self, obj):
-        return obj.views.count()
+    source_name = serializers.CharField(source='source.name', read_only=True)
+    category_name = serializers.CharField(source='category.name', read_only=True, default=None)
+    ai_summary = serializers.CharField(source='enrichment.summary', read_only=True, default='')
+    importance_score = serializers.IntegerField(source='enrichment.importance_score', read_only=True, default=None)
+    view_count = serializers.IntegerField(read_only=True, default=0)
 
     class Meta:
         model = Article
         fields = [
-            'id', 'external_id', 'url', 'title', 'slug', 'excerpt', 'content',
-            'word_count', 'read_time_minutes', 'featured_image_url', 'image_caption',
-            'source', 'category', 'author', 'tags', 'published_at', 'scraped_at',
-            'has_full_content', 'view_count'
+            'id', 'title', 'slug', 'excerpt', 'featured_image_url',
+            'source', 'source_name', 'category', 'category_name',
+            'published_at', 'scraped_at', 'read_time_minutes',
+            'has_full_content', 'view_count', 'ai_summary', 'importance_score',
         ]
+
+
+class ArticleSerializer(ArticleListSerializer):
+    author = AuthorSerializer(read_only=True)
+    tags = TagSerializer(many=True, read_only=True)
+    canonical_url = serializers.CharField(read_only=True)
+    claims = serializers.JSONField(source='enrichment.claims', read_only=True, default=list)
+    citations = serializers.JSONField(source='enrichment.citations', read_only=True, default=list)
+    local_impact = serializers.JSONField(source='enrichment.local_impact', read_only=True, default=dict)
+    bias_or_framing_notes = serializers.JSONField(
+        source='enrichment.bias_or_framing_notes',
+        read_only=True,
+        default=list,
+    )
+
+    class Meta:
+        model = Article
+        fields = ArticleListSerializer.Meta.fields + [
+            'external_id', 'url', 'canonical_url', 'content', 'word_count',
+            'paragraph_count', 'image_caption', 'author', 'tags',
+            'claims', 'citations', 'local_impact', 'bias_or_framing_notes',
+        ]
+
+
+class SourceHealthSerializer(serializers.Serializer):
+    source = NewsSourceSerializer()
+    latest_run_status = serializers.CharField(allow_null=True)
+    latest_run_started_at = serializers.DateTimeField(allow_null=True)
+    latest_run_completed_at = serializers.DateTimeField(allow_null=True)
+    latest_run_error = serializers.CharField(allow_blank=True)
+    articles_24h = serializers.IntegerField()
+    full_content_24h = serializers.IntegerField()
+    error_count_24h = serializers.IntegerField()
 
 
 class PushTokenSerializer(serializers.ModelSerializer):

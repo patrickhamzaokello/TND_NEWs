@@ -124,6 +124,8 @@ celerybeat.pid
 # Environments
 .env
 .venv
+.runtime_deps/
+.runtime_pkgs/
 env/
 venv/
 ENV/

@@ -276,7 +276,10 @@ class TNDNewsDjangoScraper:
                         continue
 
                     # Check if article already exists by URL
+                    canonical_url = Article.normalize_url(article_data['url'])
                     existing_article = Article.objects.filter(
+                        canonical_url=canonical_url
+                    ).first() or Article.objects.filter(
                         url=article_data['url']
                     ).first()
 
@@ -380,6 +383,9 @@ class TNDNewsDjangoScraper:
             run.status = 'completed'
             run.completed_at = timezone.now()
             run.save()
+            self.source.last_successful_scrape_at = run.completed_at
+            self.source.failure_count = 0
+            self.source.save(update_fields=['last_successful_scrape_at', 'failure_count'])
 
             self.log_message(run, 'info',
                              f'Scraping completed. Added: {run.articles_added}, Updated: {run.articles_updated}, Skipped: {run.articles_skipped}')
@@ -399,6 +405,8 @@ class TNDNewsDjangoScraper:
             run.error_message = str(e)
             run.completed_at = timezone.now()
             run.save()
+            self.source.failure_count += 1
+            self.source.save(update_fields=['failure_count'])
 
             self.log_message(run, 'error', f'Scraping failed: {str(e)}')
             raise
