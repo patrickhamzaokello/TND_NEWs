@@ -55,6 +55,11 @@ celery_app.conf.beat_schedule = {
         'task': 'newsintelligence.tasks.send_story_alerts',
         'schedule': crontab(minute='*/10'),
     },
+    'scrape-daily-monitor-news': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_dm_uganda',
+        'schedule': crontab(minute=10, hour='*/3'),
+        'kwargs': {'get_full_content': True, 'max_articles': 25},
+    },
   'scrape-nilepost-news': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',
         'schedule': crontab(minute=0, hour='*/3'),   # :00 — 00:00, 03:00, 06:00 …

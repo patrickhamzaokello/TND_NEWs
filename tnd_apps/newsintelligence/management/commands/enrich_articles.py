@@ -40,7 +40,7 @@ class Command(BaseCommand):
         parser.add_argument(
             '--digest',
             action='store_true',
-            help="Generate the daily digest for yesterday",
+            help="Generate today's daily digest",
         )
         parser.add_argument(
             '--digest-date',
@@ -91,7 +91,7 @@ class Command(BaseCommand):
                 except ValueError:
                     raise CommandError('--digest-date must be in YYYY-MM-DD format')
 
-            self.stdout.write(f'Generating daily digest for {target_date or "yesterday"}...')
+            self.stdout.write(f'Generating daily digest for {target_date or "today"}...')
             result = service.run_daily_digest(target_date)
             self.stdout.write(self.style.SUCCESS(
                 f"✓ Digest published for {result['digest_date']} "

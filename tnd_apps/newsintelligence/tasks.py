@@ -91,7 +91,8 @@ def retry_failed_enrichments(self):
 )
 def generate_daily_digest(self, target_date_str: str = None):
     """
-    Daily task: generate the intelligence digest for yesterday.
+    Daily task: enrich pending full-content articles, then generate today's
+    intelligence digest unless a date is supplied for backfill.
     Optionally pass target_date_str='2026-02-14' to backfill.
     """
     target_date = None
@@ -103,9 +104,15 @@ def generate_daily_digest(self, target_date_str: str = None):
             logger.error("Invalid date format %r — expected YYYY-MM-DD", target_date_str)
             return {'error': f"Invalid date format: {target_date_str!r}. Expected YYYY-MM-DD."}
 
-    logger.info("[Task] generate_daily_digest | date=%s", target_date or 'yesterday')
+    logger.info("[Task] generate_daily_digest | date=%s", target_date or timezone.localdate())
     try:
-        service = EnrichmentService()
+        service = EnrichmentService(batch_size=50)
+        enrichment_run = service.run_enrichment()
+        logger.info(
+            "[Task] pre-digest enrichment complete | processed=%d failed=%d",
+            enrichment_run.articles_processed,
+            enrichment_run.articles_failed,
+        )
         result = service.run_daily_digest(target_date)
         return result
     except Exception as exc:

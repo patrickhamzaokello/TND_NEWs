@@ -259,17 +259,16 @@ class DailyDigestAgent:
 
     def generate(self, target_date: Optional[date] = None) -> DailyDigest:
         if target_date is None:
-            target_date = timezone.now().date() - timedelta(days=1)
+            target_date = timezone.localdate()
+
+        enrichments = self._fetch_enrichments(target_date)
+        if not enrichments:
+            raise ValueError(f"No completed enriched articles found for digest date {target_date}")
 
         digest, created = DailyDigest.objects.get_or_create(digest_date=target_date)
 
         if not created and digest.is_published:
-            logger.info("Digest for %s already published — skipping", target_date)
-            return digest
-
-        enrichments = self._fetch_enrichments(target_date)
-        if not enrichments:
-            logger.warning("No enriched articles found for %s", target_date)
+            logger.info("Digest for %s already published - skipping", target_date)
             return digest
 
         trending = self._get_trending_entities(target_date)
@@ -278,21 +277,37 @@ class DailyDigestAgent:
             result = self._call_llm(target_date, enrichments, trending)
             self._save_digest(digest, result, enrichments)
             logger.info(
-                "✓ Daily digest generated for %s (%d articles)",
+                "Daily digest generated for %s (%d articles)",
                 target_date, len(enrichments)
             )
         except Exception as e:
-            logger.error("✗ Failed to generate digest for %s: %s", target_date, e, exc_info=True)
+            logger.error("Failed to generate digest for %s: %s", target_date, e, exc_info=True)
             raise
 
         return digest
 
     def _fetch_enrichments(self, target_date: date):
-        return list(
+        strict_matches = list(
             ArticleEnrichment.objects.filter(
                 status='completed',
                 article__published_at__date=target_date,
             ).select_related('article').order_by('-importance_score')[:50]
+        )
+        if strict_matches:
+            return strict_matches
+
+        current_tz = timezone.get_current_timezone()
+        end_at = timezone.make_aware(
+            timezone.datetime.combine(target_date, timezone.datetime.max.time()),
+            current_tz,
+        )
+        start_at = end_at - timedelta(hours=36)
+        return list(
+            ArticleEnrichment.objects.filter(
+                status='completed',
+                article__published_at__gte=start_at,
+                article__published_at__lte=end_at,
+            ).select_related('article').order_by('-importance_score', '-article__published_at')[:50]
         )
 
     def _get_trending_entities(self, target_date: date, window_days: int = 7) -> list:

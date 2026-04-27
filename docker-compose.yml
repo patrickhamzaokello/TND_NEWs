@@ -132,7 +132,7 @@ services:
   celery:
     image: tnd_backend_image
     container_name: tnd_celery_container
-    command: celery -A TNDNEWS worker -E -l info
+    command: celery -A TNDNEWS worker -E -l info -Q celery,news_scraping,news_intelligence,video_processing,process_queued_videos,maintenance
     restart: unless-stopped
     volumes:
       - static_files:/app/staticfiles
@@ -167,7 +167,7 @@ services:
     image: tnd_backend_image
     container_name: tnd_beat_container
     restart: unless-stopped
-    command: celery -A TNDNEWS beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler
+    command: sh -c "python manage.py sync_newsintelligence_schedule && celery -A TNDNEWS beat -l INFO --scheduler django_celery_beat.schedulers:DatabaseScheduler"
     volumes:
       - static_files:/app/staticfiles
       - media_files:/app/media
