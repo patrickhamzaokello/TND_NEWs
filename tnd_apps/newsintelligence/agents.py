@@ -287,28 +287,31 @@ class DailyDigestAgent:
         return digest
 
     def _fetch_enrichments(self, target_date: date):
-        strict_matches = list(
-            ArticleEnrichment.objects.filter(
-                status='completed',
-                article__published_at__date=target_date,
-            ).select_related('article').order_by('-importance_score')[:50]
-        )
-        if strict_matches:
-            return strict_matches
-
         current_tz = timezone.get_current_timezone()
         end_at = timezone.make_aware(
             timezone.datetime.combine(target_date, timezone.datetime.max.time()),
             current_tz,
         )
         start_at = end_at - timedelta(hours=36)
-        return list(
-            ArticleEnrichment.objects.filter(
-                status='completed',
-                article__published_at__gte=start_at,
-                article__published_at__lte=end_at,
-            ).select_related('article').order_by('-importance_score', '-article__published_at')[:50]
-        )
+        base_qs = ArticleEnrichment.objects.filter(status='completed').select_related('article')
+
+        selectors = [
+            base_qs.filter(article__published_at__date=target_date)
+            .order_by('-importance_score', '-article__published_at'),
+            base_qs.filter(article__published_at__gte=start_at, article__published_at__lte=end_at)
+            .order_by('-importance_score', '-article__published_at'),
+            base_qs.filter(analyzed_at__date=target_date)
+            .order_by('-importance_score', '-analyzed_at'),
+            base_qs.filter(updated_at__gte=start_at, updated_at__lte=end_at)
+            .order_by('-importance_score', '-updated_at'),
+            base_qs.order_by('-importance_score', '-updated_at'),
+        ]
+
+        for queryset in selectors:
+            enrichments = list(queryset[:50])
+            if enrichments:
+                return enrichments
+        return []
 
     def _get_trending_entities(self, target_date: date, window_days: int = 7) -> list:
         from django.db.models import Count, Avg
