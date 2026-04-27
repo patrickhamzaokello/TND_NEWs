@@ -16,7 +16,7 @@ from django.core.management import call_command
 logger = get_task_logger(__name__)
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=300)
-def scrape_dm_uganda(self, get_full_content=False, max_articles=None, source_name="Daily Monitor"):
+def scrape_dm_uganda(self, get_full_content=True, max_articles=None, source_name="Daily Monitor"):
     try:
         logger.info(f"Starting DM News scraping task - Task ID: {self.request.id}")
 
