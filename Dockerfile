@@ -25,6 +25,8 @@ RUN pip install --no-cache-dir -r requirements.txt && \
 
 COPY . .
 
+RUN mkdir -p /app/tndnews_static /app/staticfiles
+
 COPY django.sh /django.sh
 RUN chmod +x /django.sh
 
