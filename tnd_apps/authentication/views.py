@@ -1,6 +1,6 @@
 from django.core.cache import cache
 from django.shortcuts import render
-from rest_framework import generics, status, views, permissions
+from rest_framework import generics, status, views, permissions, serializers
 from .serializers import RegisterSerializer, SetNewPasswordSerializer, ResetPasswordEmailRequestSerializer, \
     EmailVerificationSerializer, LoginSerializer, LogoutSerializer, VerifyResetCodeSerializer, \
     ResendVerificationCodeSerializer
@@ -12,6 +12,7 @@ from django.contrib.sites.shortcuts import get_current_site
 from django.urls import reverse
 import jwt
 from django.conf import settings
+from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from .renderers import UserRenderer
@@ -44,30 +45,41 @@ class CustomRedirect(HttpResponsePermanentRedirect):
 class RegisterView(generics.GenericAPIView):
     serializer_class = RegisterSerializer
     renderer_classes = (UserRenderer,)
+    permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
         try:
             serializer = self.serializer_class(data=request.data)
             serializer.is_valid(raise_exception=True)
-            serializer.save()
 
-            user_response_data = serializer.data
-            user = User.objects.get(email=user_response_data['email'])
+            with transaction.atomic():
+                user = serializer.save()
 
-            # Generate 6-digit verification code
-            verification_code = generate_token_code()
+                if not settings.EMAIL_VERIFICATION_REQUIRED:
+                    user.is_verified = True
+                    user.save(update_fields=['is_verified'])
+                    response_data = RegisterSerializer(user).data
+                    response_data.update({
+                        'message': 'Registration successful.',
+                        'verification_required': False,
+                        'tokens': user.tokens(),
+                    })
+                    return Response(response_data, status=status.HTTP_201_CREATED)
 
-            # Store the code in cache with 30-minute expiry
-            cache_key = f"email_verification_{user.pk}"
-            cache.set(cache_key, {
-                'code': verification_code,
-                'user_id': user.pk,
-                'attempts': 0,
-                'email': user.email
-            }, timeout=1800)  # 30 minutes
+                # Generate 6-digit verification code
+                verification_code = generate_token_code()
 
-            # Prepare verification email with code
-            email_body = f'''Hello {user.name},
+                # Store the code in cache with 30-minute expiry
+                cache_key = f"email_verification_{user.pk}"
+                cache.set(cache_key, {
+                    'code': verification_code,
+                    'user_id': user.pk,
+                    'attempts': 0,
+                    'email': user.email
+                }, timeout=1800)  # 30 minutes
+
+                # Prepare verification email with code
+                email_body = f'''Hello {user.name},
 
 Welcome to our platform! To complete your registration, please verify your email address.
 
@@ -81,33 +93,37 @@ If you didn't create this account, please ignore this email.
 Best regards,
 AEACBIO TEAM'''
 
-            email_data = {
-                'email_body': email_body,
-                'to_email': user.email,
-                'email_subject': 'Verify Your Email Address'
-            }
+                email_data = {
+                    'email_body': email_body,
+                    'to_email': user.email,
+                    'email_subject': 'Verify Your Email Address'
+                }
 
-            # Send verification email
-            email_sent = Util.send_email(email_data)
+                # Send verification email before committing the user, so failed
+                # delivery does not leave a permanently unverified account behind.
+                email_sent = Util.send_email(email_data)
 
-            if not email_sent:
-                logger.warning(f"Failed to send verification email to {user.email}")
-                cache.delete(cache_key)
-                return Response(
-                    {'error': 'Failed to send verification code. Please try again.'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                if not email_sent:
+                    logger.warning(f"Failed to send verification email to {user.email}")
+                    cache.delete(cache_key)
+                    transaction.set_rollback(True)
+                    return Response(
+                        {'error': 'Failed to send verification code. Please try again.'},
+                        status=status.HTTP_503_SERVICE_UNAVAILABLE
+                    )
 
-            # Include user data and verification instructions in response
-            response_data = user_response_data.copy()
-            response_data.update({
-                'message': 'Registration successful. Please check your email for verification code.',
-                'verification_required': True,
-                'code_expires_in': '30 minutes'
-            })
+                # Include user data and verification instructions in response
+                response_data = RegisterSerializer(user).data
+                response_data.update({
+                    'message': 'Registration successful. Please check your email for verification code.',
+                    'verification_required': True,
+                    'code_expires_in': '30 minutes'
+                })
 
-            return Response(response_data, status=status.HTTP_201_CREATED)
+                return Response(response_data, status=status.HTTP_201_CREATED)
 
+        except serializers.ValidationError:
+            raise
         except Exception as e:
             logger.error(f"Error in user registration: {str(e)}", exc_info=True)
             return Response(
@@ -118,6 +134,7 @@ AEACBIO TEAM'''
 
 class VerifyEmailAPIView(views.APIView):
     serializer_class = EmailVerificationSerializer
+    permission_classes = (permissions.AllowAny,)
 
     code_param_config = openapi.Parameter(
         'code', in_=openapi.IN_QUERY, description='6-digit verification code', type=openapi.TYPE_STRING)
@@ -207,6 +224,7 @@ class VerifyEmailAPIView(views.APIView):
 
 class ResendVerificationCodeAPIView(views.APIView):
     serializer_class = ResendVerificationCodeSerializer
+    permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
         try:
@@ -288,6 +306,7 @@ AEACBIO TEAM'''
 
 class LoginAPIView(generics.GenericAPIView):
     serializer_class = LoginSerializer
+    permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
         serializer = self.serializer_class(data=request.data, context={'request': request})
@@ -298,6 +317,7 @@ class LoginAPIView(generics.GenericAPIView):
 
 class RequestPasswordResetEmail(generics.GenericAPIView):
     serializer_class = ResetPasswordEmailRequestSerializer
+    permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
         try:
@@ -369,6 +389,7 @@ class RequestPasswordResetEmail(generics.GenericAPIView):
 
 class VerifyResetCodeAPIView(generics.GenericAPIView):
     serializer_class = VerifyResetCodeSerializer
+    permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
         try:
@@ -446,6 +467,7 @@ class VerifyResetCodeAPIView(generics.GenericAPIView):
 
 class SetNewPasswordAPIView(generics.GenericAPIView):
     serializer_class = SetNewPasswordSerializer
+    permission_classes = (permissions.AllowAny,)
 
     def patch(self, request):
         try:

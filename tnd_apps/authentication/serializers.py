@@ -7,6 +7,7 @@ from rest_framework_simplejwt.tokens import RefreshToken, TokenError
 from django.contrib.auth.tokens import  default_token_generator
 from django.utils.encoding import force_str
 from django.utils.http import urlsafe_base64_decode
+from django.conf import settings
 
 class RegisterSerializer(serializers.ModelSerializer):
     password = serializers.CharField(max_length=68, min_length=6, write_only=True)
@@ -26,6 +27,9 @@ class RegisterSerializer(serializers.ModelSerializer):
             raise serializers.ValidationError({'name': 'Name is required'})
         if not email:
             raise serializers.ValidationError({'email': 'Email is required'})
+        if User.objects.filter(email__iexact=email).exists():
+            raise serializers.ValidationError({'email': 'An account with this email already exists'})
+        attrs['email'] = email
         return attrs
 
     def create(self, validated_data):
@@ -102,7 +106,7 @@ class LoginSerializer(serializers.ModelSerializer):
             raise AuthenticationFailed('Invalid credentials, try again')
         if not user.is_active:
             raise AuthenticationFailed('Account disabled, contact admin')
-        if not user.is_verified:
+        if not settings.ALLOW_UNVERIFIED_LOGIN and not user.is_verified:
             raise AuthenticationFailed('Email is not verified')
 
         # Store user in context for get_tokens

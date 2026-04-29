@@ -11,7 +11,10 @@ class Util:
         try:
             # Plunk API endpoint
             url = "https://api.useplunk.com/v1/send"
-            plunk_api_key = getattr(settings, 'EMAIL_PLUNK_API_KEY')
+            plunk_api_key = getattr(settings, 'EMAIL_PLUNK_API_KEY', '')
+            if not plunk_api_key or plunk_api_key.startswith('replace-with'):
+                logger.error("EMAIL_PLUNK_API_KEY is not configured")
+                return False
 
             # Headers for Plunk API
             headers = {
@@ -28,7 +31,7 @@ class Util:
             }
 
             # Send the email via Plunk API
-            response = requests.post(url, json=payload, headers=headers)
+            response = requests.post(url, json=payload, headers=headers, timeout=15)
 
             if response.status_code == 200:
                 logger.info(f"Email sent successfully to {data['to_email']}")
