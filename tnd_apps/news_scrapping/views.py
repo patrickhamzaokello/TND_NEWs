@@ -9,9 +9,9 @@ from datetime import timedelta
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.postgres.search import SearchQuery, SearchRank
-from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, UserNotification, ScrapingRun
+from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, Tag, UserNotification, ScrapingRun
 from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleListSerializer, ArticleViewSerializer, UserProfileSerializer, \
-    CommentSerializer, CategorySerializer, NotificationStatsSerializer, UserNotificationSerializer, SourceHealthSerializer
+    CommentSerializer, CategorySerializer, TagSerializer, NotificationStatsSerializer, UserNotificationSerializer, SourceHealthSerializer
 from datetime import datetime, timedelta
 import re
 
@@ -38,6 +38,19 @@ class IsAdminOrReadOnly(IsAuthenticated):
         if getattr(view, 'action', None) in self.allowed_user_actions:
             return True
         return bool(request.user and request.user.is_staff)
+
+
+class PublicReadAdminWrite:
+    """Anonymous users can read; only staff can create/update/delete."""
+
+    allowed_user_actions = {'subscribe', 'unsubscribe'}
+
+    def has_permission(self, request, view):
+        if request.method in SAFE_METHODS:
+            return True
+        if getattr(view, 'action', None) in self.allowed_user_actions:
+            return bool(request.user and request.user.is_authenticated)
+        return bool(request.user and request.user.is_authenticated and request.user.is_staff)
 
 
 class CategoriesPagination(PageNumberPagination):
@@ -133,9 +146,9 @@ class NewsSourceViewSet(viewsets.ModelViewSet):
 
 
 class CategoryViewSet(viewsets.ModelViewSet):
-    queryset = Category.objects.all()
+    queryset = Category.objects.all().order_by('name')
     serializer_class = CategorySerializer
-    permission_classes = [IsAdminOrReadOnly]
+    permission_classes = [PublicReadAdminWrite]
     pagination_class = CategoriesPagination
 
     @action(detail=True, methods=['post'])
@@ -151,6 +164,13 @@ class CategoryViewSet(viewsets.ModelViewSet):
         profile, created = UserProfile.objects.get_or_create(user=request.user)
         profile.preferred_categories.remove(category)
         return Response({'status': 'unsubscribed'}, status=status.HTTP_200_OK)
+
+
+class TagViewSet(viewsets.ModelViewSet):
+    queryset = Tag.objects.all().order_by('name')
+    serializer_class = TagSerializer
+    permission_classes = [PublicReadAdminWrite]
+    pagination_class = CategoriesPagination
 
 
 class ArticleViewSet(viewsets.ModelViewSet):
