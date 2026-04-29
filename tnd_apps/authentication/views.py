@@ -1,6 +1,7 @@
 from django.core.cache import cache
 from django.shortcuts import render
 from rest_framework import generics, status, views, permissions, serializers
+from rest_framework.exceptions import AuthenticationFailed
 from .serializers import RegisterSerializer, SetNewPasswordSerializer, ResetPasswordEmailRequestSerializer, \
     EmailVerificationSerializer, LoginSerializer, LogoutSerializer, VerifyResetCodeSerializer, \
     ResendVerificationCodeSerializer
@@ -32,6 +33,34 @@ import uuid
 logger = logging.getLogger(__name__)
 
 
+def normalize_response_value(value):
+    if isinstance(value, dict):
+        return {key: normalize_response_value(item) for key, item in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [normalize_response_value(item) for item in value]
+    return str(value)
+
+
+def success_response(data=None, message='', http_status=status.HTTP_200_OK):
+    payload = {'success': True}
+    if message:
+        payload['message'] = message
+    if data is not None:
+        payload['data'] = data
+    return Response(payload, status=http_status)
+
+
+def error_response(message, http_status=status.HTTP_400_BAD_REQUEST, errors=None, code='validation_error'):
+    payload = {
+        'success': False,
+        'message': normalize_response_value(message),
+        'code': normalize_response_value(code),
+    }
+    if errors is not None:
+        payload['errors'] = normalize_response_value(errors)
+    return Response(payload, status=http_status)
+
+
 def generate_token_code():
     """Generate a 6-digit random code"""
     return ''.join(random.choices(string.digits, k=6))
@@ -43,13 +72,24 @@ class CustomRedirect(HttpResponsePermanentRedirect):
 
 class RegisterView(generics.GenericAPIView):
     serializer_class = RegisterSerializer
-    renderer_classes = (UserRenderer,)
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
         try:
             serializer = self.serializer_class(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            if not serializer.is_valid():
+                email_errors = serializer.errors.get('email', [])
+                if any('already exists' in str(error).lower() for error in email_errors):
+                    return error_response(
+                        'An account with this email already exists.',
+                        http_status=status.HTTP_409_CONFLICT,
+                        errors=serializer.errors,
+                        code='user_already_exists',
+                    )
+                return error_response(
+                    'Registration validation failed.',
+                    errors=serializer.errors,
+                )
 
             user = serializer.save()
 
@@ -58,11 +98,14 @@ class RegisterView(generics.GenericAPIView):
                 user.save(update_fields=['is_verified'])
                 response_data = RegisterSerializer(user).data
                 response_data.update({
-                    'message': 'Registration successful.',
                     'verification_required': False,
                     'tokens': user.tokens(),
                 })
-                return Response(response_data, status=status.HTTP_201_CREATED)
+                return success_response(
+                    response_data,
+                    message='Registration successful.',
+                    http_status=status.HTTP_201_CREATED,
+                )
 
             # Generate 6-digit verification code
             verification_code = generate_token_code()
@@ -108,24 +151,27 @@ AEACBIO TEAM'''
             })
 
             if email_sent:
-                response_data.update({
-                    'message': 'Registration successful. Please check your email for verification code.',
-                })
-                return Response(response_data, status=status.HTTP_201_CREATED)
+                return success_response(
+                    response_data,
+                    message='Registration successful. Please check your email for verification code.',
+                    http_status=status.HTTP_201_CREATED,
+                )
 
             logger.warning(f"Failed to send verification email to {user.email}")
-            response_data.update({
-                'message': 'Registration successful, but the verification email could not be sent. Please request a new code or contact support.',
-            })
-            return Response(response_data, status=status.HTTP_201_CREATED)
+            return success_response(
+                response_data,
+                message='Registration successful, but the verification email could not be sent. Please request a new code or contact support.',
+                http_status=status.HTTP_201_CREATED,
+            )
 
         except serializers.ValidationError:
             raise
         except Exception as e:
             logger.error(f"Error in user registration: {str(e)}", exc_info=True)
-            return Response(
-                {'error': f'Registration failed: {str(e)}'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
+            return error_response(
+                'Registration failed due to a server error.',
+                http_status=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                code='registration_failed',
             )
 
 
@@ -140,7 +186,8 @@ class VerifyEmailAPIView(views.APIView):
     def post(self, request):
         try:
             serializer = self.serializer_class(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            if not serializer.is_valid():
+                return error_response('Email verification validation failed.', errors=serializer.errors)
 
             email = request.data.get('email')
             code = request.data.get('code')
@@ -149,34 +196,26 @@ class VerifyEmailAPIView(views.APIView):
             try:
                 user = User.objects.get(email=email)
             except User.DoesNotExist:
-                return Response({
-                    'error': 'Invalid email or verification code'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response('Invalid email or verification code.', code='invalid_verification')
 
             # Check if already verified
             if user.is_verified:
-                return Response({
-                    'success': True,
-                    'message': 'Email is already verified',
+                return success_response({
                     'user_id': str(user.id),
                     'email': user.email
-                }, status=status.HTTP_200_OK)
+                }, message='Email is already verified')
 
             # Check cache for the verification code
             cache_key = f"email_verification_{user.pk}"
             cached_data = cache.get(cache_key)
 
             if not cached_data:
-                return Response({
-                    'error': 'Verification code has expired. Please request a new one.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response('Verification code has expired. Please request a new one.', code='verification_code_expired')
 
             # Check attempts (prevent brute force)
             if cached_data['attempts'] >= 5:  # More attempts for email verification
                 cache.delete(cache_key)
-                return Response({
-                    'error': 'Too many failed attempts. Please request a new verification code.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response('Too many failed attempts. Please request a new verification code.', code='too_many_attempts')
 
             # Verify the code
             if cached_data['code'] != code:
@@ -184,10 +223,11 @@ class VerifyEmailAPIView(views.APIView):
                 cached_data['attempts'] += 1
                 cache.set(cache_key, cached_data, timeout=1800)
 
-                return Response({
-                    'error': 'Invalid verification code',
-                    'attempts_remaining': 5 - cached_data['attempts']
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response(
+                    'Invalid verification code.',
+                    errors={'code': ['Invalid verification code'], 'attempts_remaining': 5 - cached_data['attempts']},
+                    code='invalid_verification_code',
+                )
 
             # Code is valid - verify the user
             user.is_verified = True
@@ -199,9 +239,7 @@ class VerifyEmailAPIView(views.APIView):
             # Generate tokens for the verified user
             refresh = RefreshToken.for_user(user)
 
-            return Response({
-                'success': True,
-                'message': 'Email verified successfully',
+            return success_response({
                 'user_id': str(user.id),
                 'email': user.email,
                 'username': user.username,
@@ -209,14 +247,11 @@ class VerifyEmailAPIView(views.APIView):
                     'refresh': str(refresh),
                     'access': str(refresh.access_token)
                 }
-            }, status=status.HTTP_200_OK)
+            }, message='Email verified successfully')
 
         except Exception as e:
             logger.error(f"Error in email verification: {str(e)}")
-            return Response(
-                {'error': 'Email verification failed. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return error_response('Email verification failed. Please try again.', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR, code='email_verification_failed')
 
 
 class ResendVerificationCodeAPIView(views.APIView):
@@ -226,7 +261,8 @@ class ResendVerificationCodeAPIView(views.APIView):
     def post(self, request):
         try:
             serializer = self.serializer_class(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            if not serializer.is_valid():
+                return error_response('Resend verification validation failed.', errors=serializer.errors)
 
             email = request.data.get('email')
 
@@ -234,15 +270,11 @@ class ResendVerificationCodeAPIView(views.APIView):
             try:
                 user = User.objects.get(email=email)
             except User.DoesNotExist:
-                return Response({
-                    'error': 'No account found with this email address'
-                }, status=status.HTTP_404_NOT_FOUND)
+                return error_response('No account found with this email address.', http_status=status.HTTP_404_NOT_FOUND, code='user_not_found')
 
             # Check if already verified
             if user.is_verified:
-                return Response({
-                    'message': 'Email is already verified'
-                }, status=status.HTTP_200_OK)
+                return success_response(message='Email is already verified')
 
             # Check if there's an existing code (rate limiting)
             cache_key = f"email_verification_{user.pk}"
@@ -282,23 +314,15 @@ AEACBIO TEAM'''
             if not email_sent:
                 logger.warning(f"Failed to resend verification email to {user.email}")
                 cache.delete(cache_key)
-                return Response(
-                    {'error': 'Failed to send verification code. Please try again.'},
-                    status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                )
+                return error_response('Failed to send verification code. Please try again.', http_status=status.HTTP_503_SERVICE_UNAVAILABLE, code='email_delivery_failed')
 
-            return Response({
-                'success': 'New verification code sent to your email',
-                'message': 'Please check your email for the new 6-digit verification code',
+            return success_response({
                 'code_expires_in': '30 minutes'
-            }, status=status.HTTP_200_OK)
+            }, message='Please check your email for the new 6-digit verification code')
 
         except Exception as e:
             logger.error(f"Error in resending verification code: {str(e)}")
-            return Response(
-                {'error': 'Failed to resend verification code. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return error_response('Failed to resend verification code. Please try again.', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR, code='resend_verification_failed')
 
 
 class LoginAPIView(generics.GenericAPIView):
@@ -306,10 +330,20 @@ class LoginAPIView(generics.GenericAPIView):
     permission_classes = (permissions.AllowAny,)
 
     def post(self, request):
-        serializer = self.serializer_class(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        logger.debug(f"Login response data: {serializer.data}")
-        return Response(serializer.data, status=status.HTTP_200_OK)
+        try:
+            serializer = self.serializer_class(data=request.data, context={'request': request})
+            if not serializer.is_valid():
+                return error_response('Login validation failed.', errors=serializer.errors)
+            logger.debug(f"Login response data: {serializer.data}")
+            return success_response(serializer.data, message='Login successful')
+        except AuthenticationFailed as exc:
+            detail = exc.detail
+            message = str(detail)
+            code = 'authentication_failed'
+            if isinstance(detail, dict):
+                message = detail.get('message') or detail.get('detail') or message
+                code = detail.get('code') or code
+            return error_response(message, http_status=status.HTTP_401_UNAUTHORIZED, code=code)
 
 
 class RequestPasswordResetEmail(generics.GenericAPIView):
@@ -319,7 +353,8 @@ class RequestPasswordResetEmail(generics.GenericAPIView):
     def post(self, request):
         try:
             serializer = self.serializer_class(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            if not serializer.is_valid():
+                return error_response('Password reset validation failed.', errors=serializer.errors)
 
             email = request.data.get('email', '')
 
@@ -364,24 +399,16 @@ class RequestPasswordResetEmail(generics.GenericAPIView):
                     logger.warning(f"Failed to send password reset email to {user.email}")
                     # Clean up cache if email failed
                     cache.delete(cache_key)
-                    return Response(
-                        {'error': 'Failed to send reset code. Please try again.'},
-                        status=status.HTTP_500_INTERNAL_SERVER_ERROR
-                    )
+                    return error_response('Failed to send reset code. Please try again.', http_status=status.HTTP_503_SERVICE_UNAVAILABLE, code='email_delivery_failed')
 
             # Always return success (don't reveal if email exists)
-            return Response({
-                'success': 'If an account with this email exists, we have sent you a password reset code.',
-                'message': 'Please check your email for the 6-digit reset code.',
+            return success_response({
                 'code_expires_in': '15 minutes'
-            }, status=status.HTTP_200_OK)
+            }, message='If an account with this email exists, we have sent you a password reset code.')
 
         except Exception as e:
             logger.error(f"Error in password reset request: {str(e)}")
-            return Response(
-                {'error': 'Password reset request failed. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return error_response('Password reset request failed. Please try again.', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR, code='password_reset_request_failed')
 
 
 class VerifyResetCodeAPIView(generics.GenericAPIView):
@@ -391,7 +418,8 @@ class VerifyResetCodeAPIView(generics.GenericAPIView):
     def post(self, request):
         try:
             serializer = self.serializer_class(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            if not serializer.is_valid():
+                return error_response('Reset code validation failed.', errors=serializer.errors)
 
             email = request.data.get('email')
             code = request.data.get('code')
@@ -400,25 +428,19 @@ class VerifyResetCodeAPIView(generics.GenericAPIView):
             try:
                 user = User.objects.get(email=email)
             except User.DoesNotExist:
-                return Response({
-                    'error': 'Invalid email or code'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response('Invalid email or code.', code='invalid_reset_code')
 
             # Check cache for the code
             cache_key = f"password_reset_{user.pk}"
             cached_data = cache.get(cache_key)
 
             if not cached_data:
-                return Response({
-                    'error': 'Reset code has expired. Please request a new one.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response('Reset code has expired. Please request a new one.', code='reset_code_expired')
 
             # Check attempts (prevent brute force)
             if cached_data['attempts'] >= 3:
                 cache.delete(cache_key)
-                return Response({
-                    'error': 'Too many failed attempts. Please request a new reset code.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response('Too many failed attempts. Please request a new reset code.', code='too_many_attempts')
 
             # Verify the code
             if cached_data['code'] != code:
@@ -426,10 +448,11 @@ class VerifyResetCodeAPIView(generics.GenericAPIView):
                 cached_data['attempts'] += 1
                 cache.set(cache_key, cached_data, timeout=900)
 
-                return Response({
-                    'error': 'Invalid reset code',
-                    'attempts_remaining': 3 - cached_data['attempts']
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response(
+                    'Invalid reset code.',
+                    errors={'code': ['Invalid reset code'], 'attempts_remaining': 3 - cached_data['attempts']},
+                    code='invalid_reset_code',
+                )
 
             # Code is valid - generate secure token for password reset
             reset_token = default_token_generator.make_token(user)
@@ -446,20 +469,15 @@ class VerifyResetCodeAPIView(generics.GenericAPIView):
             # Clear the code cache
             cache.delete(cache_key)
 
-            return Response({
-                'success': True,
-                'message': 'Code verified successfully',
+            return success_response({
                 'reset_token': reset_token,
                 'uidb64': uidb64,
                 'expires_in': '10 minutes'
-            }, status=status.HTTP_200_OK)
+            }, message='Code verified successfully')
 
         except Exception as e:
             logger.error(f"Error in code verification: {str(e)}")
-            return Response(
-                {'error': 'Code verification failed. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            return error_response('Code verification failed. Please try again.', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR, code='reset_code_verification_failed')
 
 
 class SetNewPasswordAPIView(generics.GenericAPIView):
@@ -469,7 +487,8 @@ class SetNewPasswordAPIView(generics.GenericAPIView):
     def patch(self, request):
         try:
             serializer = self.serializer_class(data=request.data)
-            serializer.is_valid(raise_exception=True)
+            if not serializer.is_valid():
+                return error_response('Password reset completion validation failed.', errors=serializer.errors)
 
             # Get user info for response
             uidb64 = request.data.get('uidb64')
@@ -481,26 +500,27 @@ class SetNewPasswordAPIView(generics.GenericAPIView):
             session_data = cache.get(reset_session_key)
 
             if not session_data or not session_data.get('verified'):
-                return Response({
-                    'error': 'Reset session expired. Please verify your code again.'
-                }, status=status.HTTP_400_BAD_REQUEST)
+                return error_response('Reset session expired. Please verify your code again.', code='reset_session_expired')
 
             # Clear the reset session
             cache.delete(reset_session_key)
 
-            return Response({
-                'success': True,
-                'message': 'Password reset successful',
+            return success_response({
                 'user_id': str(user.id),
                 'email': user.email
-            }, status=status.HTTP_200_OK)
+            }, message='Password reset successful')
 
         except Exception as e:
             logger.error(f"Error in password reset completion: {str(e)}")
-            return Response(
-                {'error': 'Password reset failed. Please try again.'},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR
-            )
+            if isinstance(e, AuthenticationFailed):
+                detail = e.detail
+                message = str(detail)
+                code = 'password_reset_failed'
+                if isinstance(detail, dict):
+                    message = detail.get('message') or detail.get('detail') or message
+                    code = detail.get('code') or code
+                return error_response(message, http_status=status.HTTP_400_BAD_REQUEST, code=code)
+            return error_response('Password reset failed. Please try again.', http_status=status.HTTP_500_INTERNAL_SERVER_ERROR, code='password_reset_failed')
 
 
 class LogoutAPIView(generics.GenericAPIView):
@@ -515,12 +535,6 @@ class LogoutAPIView(generics.GenericAPIView):
             serializer = self.get_serializer(data=request.data)
             serializer.is_valid(raise_exception=True)
             serializer.save()
-            return Response(
-                {"message": "Successfully logged out"},
-                status=status.HTTP_200_OK
-            )
+            return success_response(message="Successfully logged out")
         except Exception as e:
-            return Response(
-                {"error": "Logout failed"},
-                status=status.HTTP_400_BAD_REQUEST
-            )
+            return error_response("Logout failed", code='logout_failed')

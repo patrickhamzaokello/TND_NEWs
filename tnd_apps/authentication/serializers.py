@@ -10,6 +10,7 @@ from django.utils.http import urlsafe_base64_decode
 from django.conf import settings
 
 class RegisterSerializer(serializers.ModelSerializer):
+    email = serializers.EmailField(validators=[])
     password = serializers.CharField(max_length=68, min_length=6, write_only=True)
     user_id = serializers.UUIDField(source='id', read_only=True)  # Map DB id → user_id
     username = serializers.CharField(read_only=True)
@@ -28,7 +29,7 @@ class RegisterSerializer(serializers.ModelSerializer):
         if not email:
             raise serializers.ValidationError({'email': 'Email is required'})
         if User.objects.filter(email__iexact=email).exists():
-            raise serializers.ValidationError({'email': 'An account with this email already exists'})
+            raise serializers.ValidationError({'email': ['An account with this email already exists']})
         attrs['email'] = email
         return attrs
 
@@ -96,18 +97,28 @@ class LoginSerializer(serializers.ModelSerializer):
         # Check auth provider
         filtered_user_by_email = User.objects.filter(email=email)
         if filtered_user_by_email.exists() and filtered_user_by_email[0].auth_provider != 'email':
-            raise AuthenticationFailed(
-                f"Please continue your login using {filtered_user_by_email[0].auth_provider}"
-            )
+            raise AuthenticationFailed({
+                'code': 'wrong_auth_provider',
+                'message': f"Please continue your login using {filtered_user_by_email[0].auth_provider}",
+            })
 
         # Authenticate
         user = auth.authenticate(email=email, password=password)
         if not user:
-            raise AuthenticationFailed('Invalid credentials, try again')
+            raise AuthenticationFailed({
+                'code': 'invalid_credentials',
+                'message': 'Invalid email or password',
+            })
         if not user.is_active:
-            raise AuthenticationFailed('Account disabled, contact admin')
+            raise AuthenticationFailed({
+                'code': 'account_disabled',
+                'message': 'Account disabled, contact admin',
+            })
         if not settings.ALLOW_UNVERIFIED_LOGIN and not user.is_verified:
-            raise AuthenticationFailed('Email is not verified')
+            raise AuthenticationFailed({
+                'code': 'email_not_verified',
+                'message': 'Email is not verified',
+            })
 
         # Store user in context for get_tokens
         self.context['user'] = user
