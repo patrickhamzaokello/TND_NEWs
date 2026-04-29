@@ -28,6 +28,7 @@ DIGEST_AUTO_PUBLISH = config('DIGEST_AUTO_PUBLISH', default=True, cast=bool)
 ALLOWED_HOSTS = [
     'newsapi.mwonya.com',
     'localhost',
+    '78.46.148.145'
     '127.0.0.1'
 ]
 
