@@ -12,7 +12,6 @@ from django.contrib.sites.shortcuts import get_current_site
 from django.urls import reverse
 import jwt
 from django.conf import settings
-from django.db import transaction
 from drf_yasg.utils import swagger_auto_schema
 from drf_yasg import openapi
 from .renderers import UserRenderer
@@ -52,34 +51,33 @@ class RegisterView(generics.GenericAPIView):
             serializer = self.serializer_class(data=request.data)
             serializer.is_valid(raise_exception=True)
 
-            with transaction.atomic():
-                user = serializer.save()
+            user = serializer.save()
 
-                if not settings.EMAIL_VERIFICATION_REQUIRED:
-                    user.is_verified = True
-                    user.save(update_fields=['is_verified'])
-                    response_data = RegisterSerializer(user).data
-                    response_data.update({
-                        'message': 'Registration successful.',
-                        'verification_required': False,
-                        'tokens': user.tokens(),
-                    })
-                    return Response(response_data, status=status.HTTP_201_CREATED)
+            if not settings.EMAIL_VERIFICATION_REQUIRED:
+                user.is_verified = True
+                user.save(update_fields=['is_verified'])
+                response_data = RegisterSerializer(user).data
+                response_data.update({
+                    'message': 'Registration successful.',
+                    'verification_required': False,
+                    'tokens': user.tokens(),
+                })
+                return Response(response_data, status=status.HTTP_201_CREATED)
 
-                # Generate 6-digit verification code
-                verification_code = generate_token_code()
+            # Generate 6-digit verification code
+            verification_code = generate_token_code()
 
-                # Store the code in cache with 30-minute expiry
-                cache_key = f"email_verification_{user.pk}"
-                cache.set(cache_key, {
-                    'code': verification_code,
-                    'user_id': user.pk,
-                    'attempts': 0,
-                    'email': user.email
-                }, timeout=1800)  # 30 minutes
+            # Store the code in cache with 30-minute expiry
+            cache_key = f"email_verification_{user.pk}"
+            cache.set(cache_key, {
+                'code': verification_code,
+                'user_id': user.pk,
+                'attempts': 0,
+                'email': user.email
+            }, timeout=1800)  # 30 minutes
 
-                # Prepare verification email with code
-                email_body = f'''Hello {user.name},
+            # Prepare verification email with code
+            email_body = f'''Hello {user.name},
 
 Welcome to our platform! To complete your registration, please verify your email address.
 
@@ -93,34 +91,33 @@ If you didn't create this account, please ignore this email.
 Best regards,
 AEACBIO TEAM'''
 
-                email_data = {
-                    'email_body': email_body,
-                    'to_email': user.email,
-                    'email_subject': 'Verify Your Email Address'
-                }
+            email_data = {
+                'email_body': email_body,
+                'to_email': user.email,
+                'email_subject': 'Verify Your Email Address'
+            }
 
-                # Send verification email before committing the user, so failed
-                # delivery does not leave a permanently unverified account behind.
-                email_sent = Util.send_email(email_data)
+            email_sent = Util.send_email(email_data)
 
-                if not email_sent:
-                    logger.warning(f"Failed to send verification email to {user.email}")
-                    cache.delete(cache_key)
-                    transaction.set_rollback(True)
-                    return Response(
-                        {'error': 'Failed to send verification code. Please try again.'},
-                        status=status.HTTP_503_SERVICE_UNAVAILABLE
-                    )
+            # Include user data and verification instructions in response
+            response_data = RegisterSerializer(user).data
+            response_data.update({
+                'verification_required': True,
+                'code_expires_in': '30 minutes',
+                'email_sent': email_sent,
+            })
 
-                # Include user data and verification instructions in response
-                response_data = RegisterSerializer(user).data
+            if email_sent:
                 response_data.update({
                     'message': 'Registration successful. Please check your email for verification code.',
-                    'verification_required': True,
-                    'code_expires_in': '30 minutes'
                 })
-
                 return Response(response_data, status=status.HTTP_201_CREATED)
+
+            logger.warning(f"Failed to send verification email to {user.email}")
+            response_data.update({
+                'message': 'Registration successful, but the verification email could not be sent. Please request a new code or contact support.',
+            })
+            return Response(response_data, status=status.HTTP_201_CREATED)
 
         except serializers.ValidationError:
             raise

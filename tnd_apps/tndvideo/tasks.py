@@ -391,7 +391,7 @@ class VideoProcessor:
                 logger.error(f"Error cleaning up files: {str(e)}")
 
 
-@shared_task(bind=True, max_retries=3)
+@shared_task(bind=True, max_retries=3, name='tnd_apps.tndvideo.tasks.process_video_task')
 def process_video_task(self, video_id):
     """
     Celery task to process video and generate HLS streams
@@ -457,7 +457,7 @@ def process_video_task(self, video_id):
         raise
 
 
-@shared_task
+@shared_task(name='tnd_apps.tndvideo.tasks.cleanup_old_processing_tasks')
 def cleanup_old_processing_tasks():
     """
     Clean up stale processing tasks
@@ -488,13 +488,13 @@ def cleanup_old_processing_tasks():
     logger.info(f"Cleaned up {stale_tasks.count()} stale tasks")
 
 
-@shared_task
+@shared_task(name='tnd_apps.tndvideo.tasks.cleanup_failed_uploads_task')
 def cleanup_failed_uploads_task():
     """Celery task wrapper for cleanup function"""
     from .utils import cleanup_failed_uploads
     return cleanup_failed_uploads()
 
-@shared_task
+@shared_task(name='tnd_apps.tndvideo.tasks.process_queued_videos')
 def process_queued_videos():
     """
     Process videos in the queue
@@ -512,3 +512,23 @@ def process_queued_videos():
         process_video_task.delay(str(queued_task.video.id))
     else:
         logger.debug("No videos in queue to process")
+
+
+@shared_task(bind=True, max_retries=3, name='tndvideo.tasks.process_video_task')
+def legacy_process_video_task(self, video_id):
+    return process_video_task(video_id)
+
+
+@shared_task(name='tndvideo.tasks.cleanup_old_processing_tasks')
+def legacy_cleanup_old_processing_tasks():
+    return cleanup_old_processing_tasks()
+
+
+@shared_task(name='tndvideo.tasks.cleanup_failed_uploads_task')
+def legacy_cleanup_failed_uploads_task():
+    return cleanup_failed_uploads_task()
+
+
+@shared_task(name='tndvideo.tasks.process_queued_videos')
+def legacy_process_queued_videos():
+    return process_queued_videos()

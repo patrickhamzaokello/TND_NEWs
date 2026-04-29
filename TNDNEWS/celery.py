@@ -16,15 +16,15 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute='*/15'),  # Every 15 minutes
     },
     'process-queued-videos': {
-        'task': 'tndvideo.tasks.process_queued_videos',
+        'task': 'tnd_apps.tndvideo.tasks.process_queued_videos',
         'schedule': crontab(minute='*/5'),  # Every 5 minutes
     },
     'cleanup-old-processing-tasks': {
-        'task': 'tndvideo.tasks.cleanup_old_processing_tasks',
+        'task': 'tnd_apps.tndvideo.tasks.cleanup_old_processing_tasks',
         'schedule': crontab(hour='*/1'),  # Every hour
     },
     'cleanup-failed-uploads': {
-        'task': 'tndvideo.tasks.cleanup_failed_uploads_task',
+        'task': 'tnd_apps.tndvideo.tasks.cleanup_failed_uploads_task',
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
     },
     'cleanup-failed-tasks': {
