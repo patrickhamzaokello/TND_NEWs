@@ -2,7 +2,7 @@
 from rest_framework import serializers, viewsets, status, generics, status, views
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.permissions import IsAuthenticated, SAFE_METHODS
+from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
 from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value, Sum
 from django.db.models.functions import Greatest
 from datetime import timedelta
@@ -863,6 +863,11 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     serializer_class = UserProfileSerializer
     permission_classes = [IsAuthenticated]
 
+    def get_permissions(self):
+        if getattr(self, 'action', None) == 'update_categories':
+            return [AllowAny()]
+        return super().get_permissions()
+
     def get_queryset(self):
         return self.queryset.filter(user=self.request.user)
 
@@ -908,6 +913,14 @@ class UserProfileViewSet(viewsets.ModelViewSet):
             )
 
         # Update user's profile
+        if not request.user.is_authenticated:
+            serializer = CategorySerializer(categories, many=True)
+            return Response({
+                'message': 'Categories validated successfully',
+                'persisted': False,
+                'categories': serializer.data
+            }, status=status.HTTP_200_OK)
+
         profile, created = UserProfile.objects.get_or_create(user=request.user)
         profile.preferred_categories.set(categories)
         profile.save()
@@ -915,6 +928,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
         serializer = CategorySerializer(profile.preferred_categories.all(), many=True)
         return Response({
             'message': 'Categories updated successfully',
+            'persisted': True,
             'categories': serializer.data
         }, status=status.HTTP_200_OK)
 
