@@ -178,7 +178,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     serializer_class = ArticleSerializer
     permission_classes = [IsAdminOrReadOnly]
     pagination_class = ArticleSearchPagination
-    feed_ordering = ('-published_at', '-scraped_at', '-id')
+    feed_ordering = ('-scraped_at', '-id')
 
     def get_serializer_class(self):
         if self.action in {'list', 'latest', 'featured', 'top_reads', 'trending', 'search', 'batch'}:
@@ -227,21 +227,10 @@ class ArticleViewSet(viewsets.ModelViewSet):
         now = timezone.now()
         time_threshold = now - timedelta(hours=time_window_hours)
 
-        # Calculate hours since publication (for recency scoring)
-        # Use ExpressionWrapper with DurationField, then extract epoch (seconds)
+        # Calculate hours since scrape time (for recency scoring).
         queryset = queryset.annotate(
-            time_diff=Case(
-                When(
-                    published_at__isnull=False,
-                    then=ExpressionWrapper(
-                        now - F('published_at'),
-                        output_field=DurationField()
-                    )
-                ),
-                default=ExpressionWrapper(
-                    now - F('scraped_at'),
-                    output_field=DurationField()
-                ),
+            time_diff=ExpressionWrapper(
+                now - F('scraped_at'),
                 output_field=DurationField()
             )
         ).annotate(
@@ -433,21 +422,21 @@ class ArticleViewSet(viewsets.ModelViewSet):
             except (ValueError, TypeError):
                 pass
 
-        # Filter by date range
+        # Filter by scrape date range
         date_from = params.get('date_from')
         date_to = params.get('date_to')
 
         if date_from:
             try:
                 from_date = datetime.strptime(date_from, '%Y-%m-%d').date()
-                queryset = queryset.filter(published_at__date__gte=from_date)
+                queryset = queryset.filter(scraped_at__date__gte=from_date)
             except ValueError:
                 pass
 
         if date_to:
             try:
                 to_date = datetime.strptime(date_to, '%Y-%m-%d').date()
-                queryset = queryset.filter(published_at__date__lte=to_date)
+                queryset = queryset.filter(scraped_at__date__lte=to_date)
             except ValueError:
                 pass
 
@@ -527,7 +516,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
             return self._order_by_freshness(queryset)
 
         elif sort_by == 'date_asc':
-            return queryset.order_by('published_at', 'scraped_at', 'id')
+            return queryset.order_by('scraped_at', 'id')
 
         elif sort_by == 'popularity':
             return queryset.order_by('-view_count', *self.feed_ordering)
@@ -743,33 +732,23 @@ class ArticleViewSet(viewsets.ModelViewSet):
             scraped_at__gte=time_threshold
         ).exclude(id__in=excluded_ids)
 
-        # Calculate trending score: recent views relative to article age
+        # Calculate trending score: recent views relative to scrape age.
         queryset = queryset.annotate(
             recent_views=Count('views', filter=Q(views__viewed_at__gte=time_threshold)),
-            time_diff=Case(
-                When(
-                    published_at__isnull=False,
-                    then=ExpressionWrapper(
-                        now - F('published_at'),
-                        output_field=DurationField()
-                    )
-                ),
-                default=ExpressionWrapper(
-                    now - F('scraped_at'),
-                    output_field=DurationField()
-                ),
+            time_diff=ExpressionWrapper(
+                now - F('scraped_at'),
                 output_field=DurationField()
             )
         ).annotate(
-            hours_since_published=ExpressionWrapper(
+            hours_since_scraped=ExpressionWrapper(
                 Extract('time_diff', 'epoch') / 3600.0,
                 output_field=FloatField()
             ),
             # Velocity: views per hour (with minimum to avoid division issues)
             trending_score=Case(
                 When(
-                    hours_since_published__gt=0,
-                    then=F('recent_views') / Greatest(F('hours_since_published'), Value(1.0))
+                    hours_since_scraped__gt=0,
+                    then=F('recent_views') / Greatest(F('hours_since_scraped'), Value(1.0))
                 ),
                 default=F('recent_views'),
                 output_field=FloatField()
