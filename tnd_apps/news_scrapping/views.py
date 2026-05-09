@@ -204,6 +204,41 @@ class ArticleViewSet(viewsets.ModelViewSet):
     def _order_by_freshness(self, queryset):
         return queryset.order_by(*self.feed_ordering)
 
+    def _get_intelligence_top_story(self):
+        """
+        Pick the top story from completed AI enrichment signals only.
+        Raw/non-enriched articles are intentionally excluded.
+        """
+        time_threshold = timezone.now() - timedelta(hours=24)
+        intelligence_ordering = self._get_intelligence_ordering()
+        queryset = self._get_intelligence_article_queryset()
+
+        return (
+            queryset.filter(scraped_at__gte=time_threshold)
+            .order_by(*intelligence_ordering)
+            .first()
+            or queryset.order_by(*intelligence_ordering).first()
+        )
+
+    def _get_intelligence_article_queryset(self):
+        """
+        Base queryset for intelligence-led article selections.
+        Only completed enrichments on full-content articles are eligible.
+        """
+        return self.get_queryset().filter(
+            has_full_content=True,
+            enrichment__status='completed',
+            enrichment__importance_score__isnull=False,
+        )
+
+    def _get_intelligence_ordering(self):
+        return (
+            '-enrichment__is_breaking_candidate',
+            '-enrichment__importance_score',
+            '-enrichment__follow_up_worthy',
+            *self.feed_ordering,
+        )
+
     def _calculate_article_score(self, queryset, recency_weight=0.4, engagement_weight=0.3,
                                  quality_weight=0.3, time_window_hours=48):
         """
@@ -340,9 +375,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         exclude_top = request.query_params.get('exclude_top_story', 'true').lower() == 'true'
 
         if exclude_top:
-            top_story = self.get_queryset().filter(
-                has_full_content=True
-            ).order_by(*self.feed_ordering).first()
+            top_story = self._get_intelligence_top_story()
 
             if top_story:
                 excluded_ids.append(top_story.id)
@@ -572,37 +605,12 @@ class ArticleViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def top_story(self, request):
         """
-        Get the single most important story right now.
-        Prioritizes breaking news and very recent articles with engagement.
+        Get the single most important story right now, based on intelligence
+        enrichment rather than raw feed heuristics.
 
         GET /api/articles/top_story/
         """
-        # Get articles from last 24 hours with full content
-        time_threshold = timezone.now() - timedelta(hours=24)
-
-        queryset = self.get_queryset().filter(
-            has_full_content=True,
-            scraped_at__gte=time_threshold
-        )
-
-        # Score with heavy recency bias for top story
-        queryset = self._calculate_article_score(
-            queryset,
-            recency_weight=0.6,  # Higher recency weight for top story
-            engagement_weight=0.3,
-            quality_weight=0.1,
-            time_window_hours=24
-        )
-
-        # Get top scored article
-        top_story = queryset.order_by('-article_score').first()
-
-        # Fallback to most recent if no scored articles
-        if not top_story:
-            top_story = self.get_queryset().filter(
-                has_full_content=True
-            ).order_by(*self.feed_ordering).first()
-
+        top_story = self._get_intelligence_top_story()
         if top_story:
             serializer = self.get_serializer([top_story], many=True)
             return Response(serializer.data)
@@ -612,36 +620,31 @@ class ArticleViewSet(viewsets.ModelViewSet):
     @action(detail=False, methods=['get'])
     def featured(self, request):
         """
-        Get featured articles based on comprehensive scoring.
-        Balances freshness, engagement, and quality.
+        Get featured articles from completed intelligence enrichment.
         Excludes the top story.
 
         GET /api/articles/featured/?exclude_top_story=true&exclude_ids=1,2,3
         """
-        # Get excluded IDs (including top story)
         excluded_ids = self._get_excluded_article_ids(request)
-
-        # Get articles from last 72 hours with full content
         time_threshold = timezone.now() - timedelta(hours=72)
 
-        queryset = self.get_queryset().filter(
-            has_full_content=True,
-            scraped_at__gte=time_threshold
-        ).exclude(id__in=excluded_ids)
-
-        # Calculate comprehensive score
-        queryset = self._calculate_article_score(
-            queryset,
-            recency_weight=0.4,
-            engagement_weight=0.3,
-            quality_weight=0.3,
-            time_window_hours=48
+        queryset = self._get_intelligence_article_queryset().exclude(
+            id__in=excluded_ids
         )
 
-        # Get top 5 featured articles
-        queryset = queryset.order_by('-article_score', *self.feed_ordering)[:5]
+        recent_queryset = queryset.filter(scraped_at__gte=time_threshold).order_by(
+            *self._get_intelligence_ordering()
+        )
+        featured_articles = list(recent_queryset[:5])
 
-        serializer = self.get_serializer(queryset, many=True)
+        if len(featured_articles) < 5:
+            existing_ids = [article.id for article in featured_articles]
+            fallback_queryset = queryset.exclude(id__in=existing_ids).order_by(
+                *self._get_intelligence_ordering()
+            )
+            featured_articles.extend(list(fallback_queryset[:5 - len(featured_articles)]))
+
+        serializer = self.get_serializer(featured_articles, many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['get'])
