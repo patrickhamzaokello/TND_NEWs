@@ -178,6 +178,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
     serializer_class = ArticleSerializer
     permission_classes = [IsAdminOrReadOnly]
     pagination_class = ArticleSearchPagination
+    feed_ordering = ('-published_at', '-scraped_at', '-id')
 
     def get_serializer_class(self):
         if self.action in {'list', 'latest', 'featured', 'top_reads', 'trending', 'search', 'batch'}:
@@ -186,15 +187,22 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        profile = UserProfile.objects.filter(user=user).first()
+        profile = None
+        if user and user.is_authenticated:
+            profile = UserProfile.objects.filter(user=user).first()
         base = self.queryset.select_related(
             'source', 'category', 'author', 'enrichment'
         ).prefetch_related('tags').annotate(
             view_count=Count('views', distinct=True)
         )
         if profile and profile.followed_sources.exists():
-            return base.filter(source__in=profile.followed_sources.all())
-        return base.filter(source__is_active=True)
+            return self._order_by_freshness(
+                base.filter(source__in=profile.followed_sources.all())
+            )
+        return self._order_by_freshness(base.filter(source__is_active=True))
+
+    def _order_by_freshness(self, queryset):
+        return queryset.order_by(*self.feed_ordering)
 
     def _calculate_article_score(self, queryset, recency_weight=0.4, engagement_weight=0.3,
                                  quality_weight=0.3, time_window_hours=48):
@@ -345,7 +353,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         if exclude_top:
             top_story = self.get_queryset().filter(
                 has_full_content=True
-            ).order_by('-scraped_at').first()
+            ).order_by(*self.feed_ordering).first()
 
             if top_story:
                 excluded_ids.append(top_story.id)
@@ -504,7 +512,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         if sort_by == 'relevance':
             # If using PostgreSQL search with rank, sort by rank
             if 'rank' in getattr(queryset.query, 'annotations', {}):
-                return queryset.order_by('-rank', '-scraped_at')
+                return queryset.order_by('-rank', *self.feed_ordering)
             else:
                 # Fallback: prioritize title matches, then date
                 return queryset.annotate(
@@ -513,22 +521,20 @@ class ArticleViewSet(viewsets.ModelViewSet):
                         default=Value(0),
                         output_field=IntegerField(),
                     )
-                ).order_by('-title_match', '-scraped_at')
+                ).order_by('-title_match', *self.feed_ordering)
 
         elif sort_by == 'date_desc':
-            return queryset.order_by('-scraped_at')
+            return self._order_by_freshness(queryset)
 
         elif sort_by == 'date_asc':
-            return queryset.order_by('scraped_at')
+            return queryset.order_by('published_at', 'scraped_at', 'id')
 
         elif sort_by == 'popularity':
-            return queryset.annotate(
-                view_count=Count('views')
-            ).order_by('-view_count', '-scraped_at')
+            return queryset.order_by('-view_count', *self.feed_ordering)
 
         else:
             # Default to date descending
-            return queryset.order_by('-scraped_at')
+            return self._order_by_freshness(queryset)
 
     @action(detail=False, methods=['get'])
     def search_suggestions(self, request):
@@ -606,7 +612,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         if not top_story:
             top_story = self.get_queryset().filter(
                 has_full_content=True
-            ).order_by('-scraped_at').first()
+            ).order_by(*self.feed_ordering).first()
 
         if top_story:
             serializer = self.get_serializer([top_story], many=True)
@@ -644,7 +650,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         )
 
         # Get top 5 featured articles
-        queryset = queryset.order_by('-article_score', '-scraped_at')[:5]
+        queryset = queryset.order_by('-article_score', *self.feed_ordering)[:5]
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -679,7 +685,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         )
 
         # Order by engagement score primarily
-        queryset = queryset.order_by('-engagement_score', '-article_score')[:10]
+        queryset = queryset.order_by('-engagement_score', '-article_score', *self.feed_ordering)[:10]
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -710,14 +716,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # Exclude already featured articles
         queryset = queryset.exclude(id__in=excluded_ids)
 
-        # Prefer articles with full content, but don't require it
-        queryset = queryset.annotate(
-            has_content=Case(
-                When(has_full_content=True, then=Value(1)),
-                default=Value(0),
-                output_field=IntegerField()
-            )
-        ).order_by('-has_content', '-scraped_at')[:20]
+        queryset = self._order_by_freshness(queryset)[:20]
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -777,7 +776,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
             )
         ).filter(
             recent_views__gt=0  # Must have at least some views
-        ).order_by('-trending_score', '-recent_views')[:10]
+        ).order_by('-trending_score', '-recent_views', *self.feed_ordering)[:10]
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
@@ -840,7 +839,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
             time_window_hours=168  # 7 days
         )
 
-        queryset = queryset.order_by('-article_score')[:5]
+        queryset = queryset.order_by('-article_score', *self.feed_ordering)[:5]
 
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)

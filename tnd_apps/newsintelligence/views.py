@@ -157,7 +157,7 @@ class DigestRejectView(APIView):
 class StoryAlertListView(generics.ListAPIView):
     serializer_class = StoryAlertSerializer
     pagination_class = StandardResultsSetPagination
-    permission_classes = [IsAdminUser]
+    permission_classes = [AllowAny]
 
     def get_queryset(self):
         qs = StoryAlert.objects.select_related(
@@ -166,4 +166,6 @@ class StoryAlertListView(generics.ListAPIView):
         status = self.request.query_params.get('status')
         if status:
             qs = qs.filter(status=status)
+        else:
+            qs = qs.exclude(status='suppressed')
         return qs
