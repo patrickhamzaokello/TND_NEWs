@@ -10,6 +10,7 @@ from .models import ScrapingRun, ScrapingLog,ScheduledNotification
 from .dm_scrapper import MonitorNewsDjangoScraper
 from .exclusive_bizz_scrapper import ExclusiveCoUgScraper
 from .chimpreports_scrapper import ChimpReportsScraper
+from .ubc_scrapper import UBCScraper
 import traceback
 from django.utils import timezone
 from django.core.management import call_command
@@ -231,6 +232,49 @@ def scrape_chimpreports_news(self, get_full_content=True, max_articles=None, sou
 
     except Exception as exc:
         logger.error(f"ChimpReports scraping failed: {str(exc)}")
+        logger.error(f"Traceback: {traceback.format_exc()}")
+
+        latest_run = ScrapingRun.objects.filter(
+            task_id=self.request.id
+        ).first()
+
+        if latest_run:
+            latest_run.status = 'failed'
+            latest_run.error_message = str(exc)
+            latest_run.save()
+
+        if self.request.retries < self.max_retries:
+            logger.info(f"Retrying task in {self.default_retry_delay} seconds...")
+            raise self.retry(countdown=self.default_retry_delay, exc=exc)
+
+        raise exc
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=300)
+def scrape_ubc_news(self, get_full_content=True, max_articles=None, source_name="UBC", max_pages=1):
+    try:
+        logger.info(f"Starting UBC scraping task - Task ID: {self.request.id}")
+
+        scraper = UBCScraper(source_name=source_name)
+
+        result = scraper.scrape_and_save(
+            get_full_content=get_full_content,
+            max_articles=max_articles,
+            max_pages=max_pages,
+        )
+
+        latest_run = ScrapingRun.objects.filter(
+            source=scraper.source,
+        ).order_by("-started_at").first()
+        if latest_run and not latest_run.task_id:
+            latest_run.task_id = self.request.id
+            latest_run.save(update_fields=["task_id"])
+
+        logger.info(f"UBC scraping completed successfully: {result}")
+        return result
+
+    except Exception as exc:
+        logger.error(f"UBC scraping failed: {str(exc)}")
         logger.error(f"Traceback: {traceback.format_exc()}")
 
         latest_run = ScrapingRun.objects.filter(
