@@ -45,7 +45,7 @@ celery_app.conf.beat_schedule = {
     },
     'generate-daily-digest': {
         'task': 'newsintelligence.tasks.generate_daily_digest',
-        'schedule': crontab(minute=0, hour=3),
+        'schedule': crontab(minute=0, hour='3,9,15'),
     },
     'build-story-clusters-hourly': {
         'task': 'newsintelligence.tasks.build_story_clusters',

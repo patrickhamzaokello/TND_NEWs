@@ -257,7 +257,7 @@ class DailyDigestAgent:
     Synthesizes a DailyDigest (Gold layer) from the day's enriched articles.
     """
 
-    def generate(self, target_date: Optional[date] = None) -> DailyDigest:
+    def generate(self, target_date: Optional[date] = None, force_refresh: bool = False) -> DailyDigest:
         if target_date is None:
             target_date = timezone.localdate()
 
@@ -267,7 +267,7 @@ class DailyDigestAgent:
 
         digest, created = DailyDigest.objects.get_or_create(digest_date=target_date)
 
-        if not created and digest.is_published:
+        if not created and digest.is_published and not force_refresh:
             logger.info("Digest for %s already published - skipping", target_date)
             return digest
 

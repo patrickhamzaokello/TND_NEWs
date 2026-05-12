@@ -118,15 +118,15 @@ class EnrichmentService:
         run.save()
         return run
 
-    def run_daily_digest(self, target_date: Optional[date] = None) -> dict:
+    def run_daily_digest(self, target_date: Optional[date] = None, force_refresh: bool = False) -> dict:
         """
-        Generate the daily digest for the given date (default: yesterday).
+        Generate the daily digest for the given date.
         Returns a summary dict.
         """
         run = EnrichmentRun.objects.create(run_type='daily_digest', status='started')
 
         try:
-            digest = self.digest_agent.generate(target_date)
+            digest = self.digest_agent.generate(target_date, force_refresh=force_refresh)
             run.articles_analyzed  = digest.articles_analyzed
             run.total_input_tokens  = digest.input_tokens_used
             run.total_output_tokens = digest.output_tokens_used

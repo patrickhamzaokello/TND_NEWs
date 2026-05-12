@@ -16,10 +16,10 @@ Add to your CELERY_BEAT_SCHEDULE in settings.py:
             'task': 'newsintelligence.tasks.retry_failed_enrichments',
             'schedule': crontab(minute=0, hour='*/6'),
         },
-        # Generate daily digest at 6 AM
+        # Refresh today's digest through the day
         'generate-daily-digest': {
             'task': 'newsintelligence.tasks.generate_daily_digest',
-            'schedule': crontab(minute=0, hour=6),
+            'schedule': crontab(minute=0, hour='3,9,15'),
         },
     }
 """
@@ -89,10 +89,11 @@ def retry_failed_enrichments(self):
     max_retries=2,
     name='newsintelligence.tasks.generate_daily_digest',
 )
-def generate_daily_digest(self, target_date_str: str = None):
+def generate_daily_digest(self, target_date_str: str = None, force_refresh: bool = True):
     """
     Daily task: enrich pending full-content articles, then generate today's
     intelligence digest unless a date is supplied for backfill.
+    Scheduled current-day runs refresh the published digest as new stories arrive.
     Optionally pass target_date_str='2026-02-14' to backfill.
     """
     target_date = None
@@ -113,7 +114,8 @@ def generate_daily_digest(self, target_date_str: str = None):
             enrichment_run.articles_processed,
             enrichment_run.articles_failed,
         )
-        result = service.run_daily_digest(target_date)
+        refresh_existing = force_refresh and target_date is None
+        result = service.run_daily_digest(target_date, force_refresh=refresh_existing)
         return result
     except Exception as exc:
         logger.exception("generate_daily_digest failed: %s", exc)
