@@ -1,6 +1,6 @@
 from datetime import timedelta
 
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import NotFound
@@ -72,8 +72,16 @@ class StoryClusterListView(generics.ListAPIView):
 
     def get_queryset(self):
         qs = StoryCluster.objects.annotate(
-            article_count=Count('cluster_articles', distinct=True),
-            source_count=Count('cluster_articles__article__source', distinct=True),
+            article_count=Count(
+                'cluster_articles',
+                filter=Q(cluster_articles__article__has_full_content=True),
+                distinct=True,
+            ),
+            source_count=Count(
+                'cluster_articles__article__source',
+                filter=Q(cluster_articles__article__has_full_content=True),
+                distinct=True,
+            ),
         ).order_by('-last_seen_at', '-importance_score')
 
         status = self.request.query_params.get('status')
@@ -92,8 +100,16 @@ class StoryClusterDetailView(generics.RetrieveAPIView):
 
     def get_queryset(self):
         return StoryCluster.objects.annotate(
-            article_count=Count('cluster_articles', distinct=True),
-            source_count=Count('cluster_articles__article__source', distinct=True),
+            article_count=Count(
+                'cluster_articles',
+                filter=Q(cluster_articles__article__has_full_content=True),
+                distinct=True,
+            ),
+            source_count=Count(
+                'cluster_articles__article__source',
+                filter=Q(cluster_articles__article__has_full_content=True),
+                distinct=True,
+            ),
         ).prefetch_related(
             'cluster_articles__article__source',
             'cluster_articles__article__category',
@@ -162,7 +178,7 @@ class StoryAlertListView(generics.ListAPIView):
     def get_queryset(self):
         qs = StoryAlert.objects.select_related(
             'cluster', 'article', 'article__source', 'article__category', 'article__author'
-        ).order_by('-created_at')
+        ).filter(article__has_full_content=True).order_by('-created_at')
         status = self.request.query_params.get('status')
         if status:
             qs = qs.filter(status=status)

@@ -132,7 +132,7 @@ class TokenUpdateUsageSerializer(serializers.Serializer):
 class CommentSerializer(serializers.ModelSerializer):
     user = serializers.StringRelatedField(read_only=True)  # Display username
     replies = serializers.SerializerMethodField()  # Nested replies
-    article = serializers.PrimaryKeyRelatedField(queryset=Article.objects.all())
+    article = serializers.PrimaryKeyRelatedField(queryset=Article.objects.filter(has_full_content=True))
 
     class Meta:
         model = Comment
@@ -190,7 +190,7 @@ class NotificationArticleSerializer(serializers.ModelSerializer):
 class UserNotificationSerializer(serializers.ModelSerializer):
     """Serializer for user notifications"""
 
-    articles = NotificationArticleSerializer(many=True, read_only=True)
+    articles = serializers.SerializerMethodField()
     article_count = serializers.SerializerMethodField()
     time_ago = serializers.SerializerMethodField()
 
@@ -204,7 +204,12 @@ class UserNotificationSerializer(serializers.ModelSerializer):
 
     def get_article_count(self, obj):
         """Get the count of articles in this notification"""
-        return obj.articles.count()
+        return obj.articles.filter(has_full_content=True).count()
+
+    def get_articles(self, obj):
+        """Return only complete articles linked to this notification."""
+        articles = obj.articles.filter(has_full_content=True).select_related('source', 'category')
+        return NotificationArticleSerializer(articles, many=True).data
 
     def get_time_ago(self, obj):
         """Human-readable time since notification was sent"""

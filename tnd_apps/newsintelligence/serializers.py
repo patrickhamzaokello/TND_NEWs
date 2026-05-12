@@ -34,7 +34,8 @@ def _build_article_map(article_ids: list[int]) -> dict[int, dict]:
     Single DB query regardless of how many IDs are passed.
     """
     articles = Article.objects.select_related('source', 'category', 'author').filter(
-        id__in=article_ids
+        id__in=article_ids,
+        has_full_content=True,
     )
     return {
         article.id: ArticleSnippetSerializer(article).data
@@ -174,8 +175,9 @@ class EntitySerializer(serializers.ModelSerializer):
 
 class SourcePerspectiveSerializer(serializers.ModelSerializer):
     source_name = serializers.CharField(source='source.name', read_only=True)
-    article_title = serializers.CharField(source='article.title', read_only=True)
-    article_url = serializers.CharField(source='article.url', read_only=True)
+    article = serializers.SerializerMethodField()
+    article_title = serializers.SerializerMethodField()
+    article_url = serializers.SerializerMethodField()
 
     class Meta:
         model = SourcePerspective
@@ -185,13 +187,37 @@ class SourcePerspectiveSerializer(serializers.ModelSerializer):
             'omitted_context', 'sentiment_score', 'created_at',
         ]
 
+    def _full_content_article(self, obj):
+        article = getattr(obj, 'article', None)
+        if article and article.has_full_content:
+            return article
+        return None
+
+    def get_article(self, obj):
+        article = self._full_content_article(obj)
+        return article.id if article else None
+
+    def get_article_title(self, obj):
+        article = self._full_content_article(obj)
+        return article.title if article else None
+
+    def get_article_url(self, obj):
+        article = self._full_content_article(obj)
+        return article.url if article else None
+
 
 class StoryTimelineEventSerializer(serializers.ModelSerializer):
-    article = ArticleSnippetSerializer(read_only=True)
+    article = serializers.SerializerMethodField()
 
     class Meta:
         model = StoryTimelineEvent
         fields = ['id', 'event_date', 'title', 'description', 'article', 'citations', 'created_at']
+
+    def get_article(self, obj):
+        article = getattr(obj, 'article', None)
+        if article and article.has_full_content:
+            return ArticleSnippetSerializer(article).data
+        return None
 
 
 class StoryClusterListSerializer(serializers.ModelSerializer):
@@ -219,16 +245,19 @@ class StoryClusterDetailSerializer(StoryClusterListSerializer):
         articles = [
             link.article
             for link in obj.cluster_articles.select_related('article__source', 'article__category', 'article__author').all()
+            if link.article.has_full_content
         ]
         return ArticleSnippetSerializer(articles, many=True).data
 
     def get_timeline(self, obj):
-        events = obj.timeline_events.select_related('article__source', 'article__category', 'article__author').all()
+        events = obj.timeline_events.select_related('article__source', 'article__category', 'article__author').filter(
+            article__has_full_content=True
+        )
         return StoryTimelineEventSerializer(events, many=True).data
 
 
 class StoryAlertSerializer(serializers.ModelSerializer):
-    article = ArticleSnippetSerializer(read_only=True)
+    article = serializers.SerializerMethodField()
     cluster_title = serializers.CharField(source='cluster.title', read_only=True)
 
     class Meta:
@@ -237,3 +266,9 @@ class StoryAlertSerializer(serializers.ModelSerializer):
             'id', 'cluster', 'cluster_title', 'article', 'title', 'reason',
             'importance_score', 'status', 'created_at', 'sent_at',
         ]
+
+    def get_article(self, obj):
+        article = getattr(obj, 'article', None)
+        if article and article.has_full_content:
+            return ArticleSnippetSerializer(article).data
+        return None

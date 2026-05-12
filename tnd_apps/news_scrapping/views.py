@@ -3,7 +3,7 @@ from rest_framework import serializers, viewsets, status, generics, status, view
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
-from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value, Sum
+from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value, Sum, Prefetch
 from django.db.models.functions import Greatest
 from datetime import timedelta
 from django.utils import timezone
@@ -190,7 +190,7 @@ class ArticleViewSet(viewsets.ModelViewSet):
         profile = None
         if user and user.is_authenticated:
             profile = UserProfile.objects.filter(user=user).first()
-        base = self.queryset.select_related(
+        base = self.queryset.filter(has_full_content=True).select_related(
             'source', 'category', 'author', 'enrichment'
         ).prefetch_related('tags').annotate(
             view_count=Count('views', distinct=True)
@@ -580,7 +580,8 @@ class ArticleViewSet(viewsets.ModelViewSet):
         # Get suggestions from recent article titles
         title_suggestions = Article.objects.filter(
             title__icontains=query,
-            scraped_at__gte=recent_threshold
+            scraped_at__gte=recent_threshold,
+            has_full_content=True,
         ).order_by('-scraped_at').values_list('title', flat=True).distinct()[:limit // 2]
 
         # Get suggestions from categories
@@ -915,7 +916,7 @@ class UserProfileViewSet(viewsets.ModelViewSet):
 
 
 class CommentViewSet(viewsets.ModelViewSet):
-    queryset = Comment.objects.filter(is_approved=True)
+    queryset = Comment.objects.filter(is_approved=True, article__has_full_content=True)
     serializer_class = CommentSerializer
     permission_classes = [IsAuthenticated]
 
@@ -1239,7 +1240,12 @@ class UserNotificationViewSet(viewsets.ReadOnlyModelViewSet):
         """Get notifications for the current user"""
         return UserNotification.objects.filter(
             user=self.request.user
-        ).prefetch_related('articles', 'articles__source', 'articles__category').order_by('-sent_at')
+        ).prefetch_related(
+            Prefetch(
+                'articles',
+                queryset=Article.objects.filter(has_full_content=True).select_related('source', 'category'),
+            )
+        ).order_by('-sent_at')
 
     @action(detail=False, methods=['get'])
     def unread(self, request):
