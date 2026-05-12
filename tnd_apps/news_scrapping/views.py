@@ -112,6 +112,13 @@ class NewsSourceViewSet(viewsets.ModelViewSet):
         return Response({'status': 'unfollowed'}, status=status.HTTP_200_OK)
 
     @action(detail=False, methods=['get'])
+    def followed(self, request):
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        sources = profile.followed_sources.filter(is_active=True).order_by('name')
+        serializer = self.get_serializer(sources, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
     def health(self, request):
         """Source scrape health dashboard for operations/mobile admin views."""
         now = timezone.now()
@@ -857,6 +864,12 @@ class UserProfileViewSet(viewsets.ModelViewSet):
     def subscribed_categories(self, request):
         profile, created = UserProfile.objects.get_or_create(user=request.user)
         serializer = CategorySerializer(profile.preferred_categories.all(), many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'])
+    def followed_sources(self, request):
+        profile, created = UserProfile.objects.get_or_create(user=request.user)
+        serializer = NewsSourceSerializer(profile.followed_sources.filter(is_active=True).order_by('name'), many=True)
         return Response(serializer.data)
 
     @action(detail=False, methods=['post'])
