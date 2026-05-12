@@ -18,7 +18,7 @@ from .models import Article, Author, Category, NewsSource, ScrapingLog, Scraping
 class UBCScraper:
     DEFAULT_SOURCE_NAME = "UBC"
     DEFAULT_BASE_URL = "https://ubc.go.ug"
-    DEFAULT_NEWS_URL = "https://ubc.go.ug/"
+    DEFAULT_NEWS_URL = "https://ubc.go.ug/category/news/"
     MIN_FULL_CONTENT_WORDS = 70
     REQUEST_DELAY = 0.8
     PAGE_DELAY = 1.2
@@ -64,7 +64,7 @@ class UBCScraper:
         if not self.source.base_url:
             self.source.base_url = self.DEFAULT_BASE_URL
             source_updates.append("base_url")
-        if not self.source.news_url:
+        if not self.source.news_url or self.source.news_url.rstrip("/") == self.DEFAULT_BASE_URL:
             self.source.news_url = self.DEFAULT_NEWS_URL
             source_updates.append("news_url")
         if source_updates:
@@ -96,7 +96,10 @@ class UBCScraper:
         return re.sub(r"\s+", " ", (text or "").replace("\xa0", " ")).strip()
 
     def _absolute_url(self, url: str) -> str:
-        return urljoin(self.base_url + "/", (url or "").strip())
+        url = (url or "").strip()
+        if not url:
+            return ""
+        return urljoin(self.base_url + "/", url)
 
     def _fetch_soup(self, url: str, run: ScrapingRun | None = None) -> BeautifulSoup | None:
         try:
@@ -184,7 +187,16 @@ class UBCScraper:
             or ""
         )
         if src.startswith("data:"):
-            src = element.get("data-img-url") or element.get("data-lazy-src") or ""
+            src = element.get("data-img-url") or element.get("data-lazy-src") or element.get("data-src") or ""
+        if not src:
+            srcset = element.get("data-lazy-srcset") or element.get("data-srcset") or element.get("srcset") or ""
+            if srcset:
+                src = srcset.split(",", 1)[0].strip().split(" ", 1)[0]
+        if not src:
+            style = element.get("style", "")
+            match = re.search(r"url\(['\"]?([^'\")]+)", style)
+            if match:
+                src = match.group(1)
         return self._absolute_url(src)
 
     def _image_from_node(self, node: dict) -> str:
@@ -244,8 +256,11 @@ class UBCScraper:
         return excerpt if len(excerpt) <= max_length else excerpt[:max_length].rsplit(" ", 1)[0] + "..."
 
     def _parse_listing_card(self, card) -> dict | None:
-        title_link = card.select_one(".td-module-title a[href], h3.entry-title a[href], .entry-title a[href]")
-        thumb_link = card.select_one(".td-module-thumb a[href], a.td-image-wrap[href]")
+        title_link = card.select_one(
+            ".td-module-title a[href], h3.entry-title a[href], .entry-title a[href], "
+            "h1 a[href], h2 a[href], h3 a[href]"
+        )
+        thumb_link = card.select_one(".td-module-thumb a[href], a.td-image-wrap[href], a[rel='bookmark'][href]")
         anchor = title_link or thumb_link
         if not anchor:
             return None
@@ -263,6 +278,46 @@ class UBCScraper:
         category_el = card.select_one(".td-post-category")
         excerpt_el = card.select_one(".td-excerpt")
 
+        published_date = ""
+        if date_el:
+            published_date = date_el.get("datetime") or date_el.get_text(" ", strip=True)
+
+        return {
+            "url": url,
+            "title": title,
+            "featured_image": self._image_url(image_el),
+            "published_date_text": self._clean(published_date),
+            "category": self._clean(category_el.get_text(" ", strip=True) if category_el else "News") or "News",
+            "excerpt": self._clean(excerpt_el.get_text(" ", strip=True) if excerpt_el else ""),
+        }
+
+    def _parse_anchor_listing_item(self, anchor) -> dict | None:
+        url = self._absolute_url(anchor.get("href", ""))
+        if not self._is_article_url(url):
+            return None
+
+        card = anchor.find_parent(
+            class_=re.compile(
+                r"td_module|td-module|td-block-span|td-big-grid-post|td-trending-now-post",
+                re.IGNORECASE,
+            )
+        )
+        title = self._clean(anchor.get("title", "") or anchor.get_text(" ", strip=True))
+        if (not title or len(title) < 8) and card:
+            title_el = card.select_one(".td-module-title a, .entry-title a, h1 a, h2 a, h3 a")
+            title = self._clean(title_el.get("title", "") or title_el.get_text(" ", strip=True)) if title_el else title
+        if not title or len(title) < 8:
+            return None
+
+        image_el = None
+        if card:
+            image_el = card.select_one("[data-img-url], img.entry-thumb, img")
+        if image_el is None:
+            image_el = anchor.select_one("[data-img-url], img")
+
+        date_el = card.select_one("time[datetime], .td-post-date time, .td-post-date") if card else None
+        category_el = card.select_one(".td-post-category") if card else None
+        excerpt_el = card.select_one(".td-excerpt") if card else None
         published_date = ""
         if date_el:
             published_date = date_el.get("datetime") or date_el.get_text(" ", strip=True)
@@ -297,18 +352,11 @@ class UBCScraper:
                     seen.add(parsed["url"])
                     articles.append(parsed)
 
-        if articles:
-            return articles
-
-        for anchor in soup.select("h1 a[href], h2 a[href], h3 a[href], .td-module-thumb a[href]"):
-            url = self._absolute_url(anchor.get("href", ""))
-            if url in seen or not self._is_article_url(url):
-                continue
-            title = self._clean(anchor.get("title", "") or anchor.get_text(" ", strip=True))
-            if len(title) < 8:
-                continue
-            seen.add(url)
-            articles.append({"url": url, "title": title, "category": "News"})
+        for anchor in soup.select("a[href]"):
+            parsed = self._parse_anchor_listing_item(anchor)
+            if parsed and parsed["url"] not in seen:
+                seen.add(parsed["url"])
+                articles.append(parsed)
         return articles
 
     def _paragraphs_from_body(self, body: str) -> list[str]:
