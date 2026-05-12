@@ -139,12 +139,23 @@ class ChimpReportsScraper:
 
     def _article_json_ld(self, soup: BeautifulSoup) -> dict:
         article_types = {"NewsArticle", "Article", "BlogPosting", "ReportageNewsArticle"}
+        fallback = {}
         for node in self._json_ld_nodes(soup):
             node_type = node.get("@type")
             types = set(node_type if isinstance(node_type, list) else [node_type])
             if types & article_types:
-                return node
-        return {}
+                if node.get("articleBody"):
+                    return node
+                if not fallback:
+                    fallback = node
+        return fallback
+
+    def _article_body_from_json_ld(self, soup: BeautifulSoup) -> str:
+        for node in self._json_ld_nodes(soup):
+            body = node.get("articleBody")
+            if isinstance(body, str) and body.strip():
+                return body
+        return ""
 
     def _parse_date(self, value: str | None) -> datetime | None:
         value = self._clean(value or "")
@@ -307,8 +318,16 @@ class ChimpReportsScraper:
     def _paragraphs_from_body(self, body: str) -> list[str]:
         if not body:
             return []
-        raw_parts = re.split(r"\r?\n\s*\r?\n|(?<=[.!?])\s+(?=[A-Z])", body)
-        return [self._clean(part) for part in raw_parts if not self._is_boilerplate(self._clean(part))]
+        body = body.replace("\r\n", "\n").replace("\r", "\n").strip()
+        raw_parts = [part for part in re.split(r"\n\s*\n+", body) if part.strip()]
+        if len(raw_parts) <= 1:
+            raw_parts = [part for part in re.split(r"(?<=[.!?])\s+(?=[A-Z])", body) if part.strip()]
+        paragraphs = []
+        for part in raw_parts:
+            text = self._clean(part)
+            if text and not self._is_boilerplate(text):
+                paragraphs.append(text)
+        return paragraphs
 
     def _paragraphs_from_soup(self, soup: BeautifulSoup) -> list[str]:
         selectors = [
@@ -354,10 +373,14 @@ class ChimpReportsScraper:
             title_el = soup.select_one("h1.post-title.entry-title, h1.entry-title, h1")
             title = self._clean(title_el.get_text(" ", strip=True) if title_el else "")
 
-        body = self._clean(node.get("articleBody", "")) if node else ""
+        body = node.get("articleBody", "") if node else ""
+        if not body:
+            body = self._article_body_from_json_ld(soup)
         paragraphs = self._paragraphs_from_body(body)
         if len(" ".join(paragraphs).split()) < self.MIN_FULL_CONTENT_WORDS:
-            paragraphs = self._paragraphs_from_soup(soup)
+            soup_paragraphs = self._paragraphs_from_soup(soup)
+            if len(" ".join(soup_paragraphs).split()) > len(" ".join(paragraphs).split()):
+                paragraphs = soup_paragraphs
 
         author_name, author_url = self._author_from_node(node)
         if not author_name:
@@ -500,6 +523,15 @@ class ChimpReportsScraper:
                     try:
                         external_id = self._external_id_from_url(article_url)
                         detail = self._scrape_article_detail(article_url, run) if get_full_content else None
+                        if get_full_content and detail and not detail.get("has_full_content"):
+                            self._log(
+                                run,
+                                "warning",
+                                f"Detail content below threshold: {detail.get('word_count', 0)} words",
+                                article_url,
+                            )
+                        elif get_full_content and not detail:
+                            self._log(run, "warning", "No article detail content returned", article_url)
                         content_hash = Article._hash_text(detail.get("full_content") or detail.get("excerpt")) if detail else ""
                         existing = self._find_existing_article(article_url, external_id, content_hash)
 
