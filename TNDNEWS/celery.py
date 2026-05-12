@@ -60,6 +60,11 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=10, hour='*/3'),
         'kwargs': {'get_full_content': True, 'max_articles': 25},
     },
+    'scrape-chimpreports-news': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_chimpreports_news',
+        'schedule': crontab(minute=20, hour='*/3'),
+        'kwargs': {'get_full_content': True, 'max_articles': 25, 'max_pages': 2},
+    },
   'scrape-nilepost-news': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',
         'schedule': crontab(minute=0, hour='*/3'),   # :00 — 00:00, 03:00, 06:00 …
