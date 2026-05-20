@@ -7,7 +7,7 @@ class NewsSourceSerializer(serializers.ModelSerializer):
         model = NewsSource
         fields = [
             'id', 'name', 'base_url', 'news_url', 'is_active',
-            'reliability_tier', 'ownership', 'editorial_notes',
+            'reliability_tier', 'ownership', 'editorial_notes', 'favicon_url',
             'country', 'language', 'last_successful_scrape_at', 'failure_count'
         ]
 

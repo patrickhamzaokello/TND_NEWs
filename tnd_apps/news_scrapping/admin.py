@@ -12,9 +12,15 @@ from .models import (
 
 @admin.register(NewsSource)
 class NewsSourceAdmin(admin.ModelAdmin):
-    list_display = ['name', 'base_url', 'is_active', 'created_at', 'follower_count', 'notification_count']
+    list_display = ['name', 'base_url', 'favicon_preview', 'is_active', 'created_at', 'follower_count', 'notification_count']
     list_filter = ['is_active', 'created_at']
-    search_fields = ['name', 'base_url']
+    search_fields = ['name', 'base_url', 'favicon_url']
+
+    def favicon_preview(self, obj):
+        if not obj.favicon_url:
+            return '-'
+        return format_html('<img src="{}" style="width:20px;height:20px;object-fit:contain;" />', obj.favicon_url)
+    favicon_preview.short_description = 'Icon'
 
     def follower_count(self, obj):
         return obj.userprofile_set.count()

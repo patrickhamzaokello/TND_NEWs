@@ -27,6 +27,7 @@ class NewsSource(models.Model):
     reliability_tier = models.CharField(max_length=20, choices=RELIABILITY_CHOICES, default='unknown')
     ownership = models.CharField(max_length=200, blank=True)
     editorial_notes = models.TextField(blank=True)
+    favicon_url = models.URLField(blank=True, max_length=500)
     country = models.CharField(max_length=80, default='Uganda')
     language = models.CharField(max_length=40, default='English')
     scrape_config = models.JSONField(default=dict, blank=True)

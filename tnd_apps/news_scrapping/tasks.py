@@ -17,6 +17,18 @@ from django.core.management import call_command
 
 logger = get_task_logger(__name__)
 
+
+@shared_task(name="tnd_apps.news_scrapping.tasks.update_source_favicons")
+def update_source_favicons(refresh_all=False, include_inactive=False):
+    command_args = []
+    if refresh_all:
+        command_args.append("--all")
+    if include_inactive:
+        command_args.append("--include-inactive")
+    call_command("update_source_favicons", *command_args)
+    return {"status": "ok", "refresh_all": refresh_all, "include_inactive": include_inactive}
+
+
 @shared_task(bind=True, max_retries=3, default_retry_delay=300)
 def scrape_dm_uganda(self, get_full_content=True, max_articles=None, source_name="Daily Monitor"):
     try:
