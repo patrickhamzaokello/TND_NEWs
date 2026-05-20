@@ -173,6 +173,21 @@ class EntitySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'normalized_name', 'entity_type', 'aliases', 'description']
 
 
+class EntityTopArticleSerializer(serializers.ModelSerializer):
+    source = serializers.CharField(source='source.name', read_only=True)
+
+    class Meta:
+        model = Article
+        fields = [
+            'id',
+            'title',
+            'slug',
+            'excerpt',
+            'source',
+            'featured_image_url',
+        ]
+
+
 class SourcePerspectiveSerializer(serializers.ModelSerializer):
     source_name = serializers.CharField(source='source.name', read_only=True)
     article = serializers.SerializerMethodField()

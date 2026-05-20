@@ -13,6 +13,7 @@ from .models import DailyDigest, EntityMention, StoryAlert, StoryCluster
 from .serializers import (
     DailyDigestDetailSerializer,
     DailyDigestListSerializer,
+    EntityTopArticleSerializer,
     StoryAlertSerializer,
     StoryClusterDetailSerializer,
     StoryClusterListSerializer,
@@ -135,6 +136,131 @@ class TrendingEntitiesView(generics.GenericAPIView):
         return Response({
             'window_days': window_days,
             'results': list(rows),
+        })
+
+
+class EntityTopArticlesMixin:
+    def _entity_mentions(self, entity_name, entity_type=None, window_days=14):
+        since = timezone.now().date() - timedelta(days=window_days)
+        normalized_name = (entity_name or '').strip().lower()
+        queryset = EntityMention.objects.filter(
+            normalized_name=normalized_name,
+            mention_date__gte=since,
+            enrichment__status='completed',
+            enrichment__article__has_full_content=True,
+            enrichment__article__source__is_active=True,
+        ).select_related(
+            'enrichment',
+            'enrichment__article',
+            'enrichment__article__source',
+        ).annotate(
+            view_count=Count('enrichment__article__views', distinct=True)
+        )
+        if entity_type:
+            queryset = queryset.filter(entity_type=entity_type)
+        return queryset.order_by(
+            '-enrichment__importance_score',
+            '-view_count',
+            '-mention_date',
+            '-enrichment__article__scraped_at',
+        )
+
+    def _ranked_articles_for_entity(self, entity_name, entity_type=None, limit=5, window_days=14):
+        mentions = self._entity_mentions(entity_name, entity_type, window_days)
+        seen = set()
+        ranked = []
+
+        for mention in mentions[:limit * 4]:
+            article = mention.enrichment.article
+            if article.id in seen:
+                continue
+            seen.add(article.id)
+            ranked.append(article)
+            if len(ranked) >= limit:
+                break
+
+        return ranked
+
+
+class EntityTopArticlesView(EntityTopArticlesMixin, generics.GenericAPIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        entity = request.query_params.get('entity', '').strip()
+        entity_type = request.query_params.get('type', '').strip() or None
+        if not entity:
+            return Response({'error': 'entity query parameter is required'}, status=400)
+
+        try:
+            limit = int(request.query_params.get('limit', 5))
+            window_days = int(request.query_params.get('window_days', 14))
+        except (TypeError, ValueError):
+            limit = 5
+            window_days = 14
+
+        limit = max(1, min(limit, 20))
+        window_days = max(1, min(window_days, 90))
+        articles = self._ranked_articles_for_entity(entity, entity_type, limit, window_days)
+
+        return Response({
+            'entity': entity,
+            'type': entity_type,
+            'window_days': window_days,
+            'results': EntityTopArticleSerializer(articles, many=True).data,
+        })
+
+
+class TopEntitiesWithArticlesView(EntityTopArticlesMixin, generics.GenericAPIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        try:
+            entity_limit = int(request.query_params.get('entity_limit', 10))
+            articles_per_entity = int(request.query_params.get('articles_per_entity', 3))
+            window_days = int(request.query_params.get('window_days', 7))
+        except (TypeError, ValueError):
+            entity_limit = 10
+            articles_per_entity = 3
+            window_days = 7
+
+        entity_limit = max(1, min(entity_limit, 30))
+        articles_per_entity = max(1, min(articles_per_entity, 10))
+        window_days = max(1, min(window_days, 90))
+        since = timezone.now().date() - timedelta(days=window_days)
+
+        entities = EntityMention.objects.filter(
+            mention_date__gte=since,
+            enrichment__status='completed',
+            enrichment__article__has_full_content=True,
+            enrichment__article__source__is_active=True,
+        ).values(
+            'normalized_name',
+            'entity_type',
+        ).annotate(
+            mention_count=Count('id'),
+        ).order_by('-mention_count')[:entity_limit]
+
+        results = []
+        for entity in entities:
+            articles = self._ranked_articles_for_entity(
+                entity['normalized_name'],
+                entity['entity_type'],
+                articles_per_entity,
+                window_days,
+            )
+            if not articles:
+                continue
+            results.append({
+                'entity': entity['normalized_name'].title(),
+                'normalized_name': entity['normalized_name'],
+                'type': entity['entity_type'],
+                'mention_count': entity['mention_count'],
+                'articles': EntityTopArticleSerializer(articles, many=True).data,
+            })
+
+        return Response({
+            'window_days': window_days,
+            'results': results,
         })
 
 

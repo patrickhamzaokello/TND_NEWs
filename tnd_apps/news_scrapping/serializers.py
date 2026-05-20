@@ -51,6 +51,18 @@ class ArticleListSerializer(serializers.ModelSerializer):
         ]
 
 
+class ArticleReadNextSerializer(serializers.ModelSerializer):
+    source = NewsSourceSerializer(read_only=True)
+    source_name = serializers.CharField(source='source.name', read_only=True)
+
+    class Meta:
+        model = Article
+        fields = [
+            'id', 'title', 'slug', 'excerpt',
+            'source', 'source_name', 'featured_image_url',
+        ]
+
+
 class ArticleSerializer(ArticleListSerializer):
     author = AuthorSerializer(read_only=True)
     tags = TagSerializer(many=True, read_only=True)

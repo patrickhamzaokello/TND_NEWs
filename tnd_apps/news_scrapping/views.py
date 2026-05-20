@@ -10,7 +10,7 @@ from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
 from django.contrib.postgres.search import SearchQuery, SearchRank
 from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, Tag, UserNotification, ScrapingRun
-from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleListSerializer, ArticleViewSerializer, UserProfileSerializer, \
+from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleListSerializer, ArticleReadNextSerializer, ArticleViewSerializer, UserProfileSerializer, \
     CommentSerializer, CategorySerializer, TagSerializer, NotificationStatsSerializer, UserNotificationSerializer, SourceHealthSerializer
 from datetime import datetime, timedelta
 import re
@@ -188,6 +188,8 @@ class ArticleViewSet(viewsets.ModelViewSet):
     feed_ordering = ('-scraped_at', '-id')
 
     def get_serializer_class(self):
+        if self.action == 'read_next':
+            return ArticleReadNextSerializer
         if self.action in {'list', 'latest', 'featured', 'top_reads', 'trending', 'search', 'batch'}:
             return ArticleListSerializer
         return ArticleSerializer
@@ -396,6 +398,69 @@ class ArticleViewSet(viewsets.ModelViewSet):
                 pass
 
         return excluded_ids
+
+    def _parse_id_list(self, raw_value):
+        if not raw_value:
+            return []
+        try:
+            return [int(value) for value in raw_value.split(',') if value.strip()]
+        except (TypeError, ValueError):
+            return []
+
+    def _read_next_queryset(self, request):
+        params = getattr(request, 'query_params', request.GET)
+        excluded_ids = set(self._parse_id_list(params.get('exclude_ids', '')))
+        article_id = params.get('article_id')
+        seed_article = None
+
+        if article_id:
+            try:
+                seed_article = self.get_queryset().filter(id=int(article_id)).first()
+            except (TypeError, ValueError):
+                seed_article = None
+            if seed_article:
+                excluded_ids.add(seed_article.id)
+
+        queryset = self._get_intelligence_article_queryset().exclude(id__in=excluded_ids)
+        if not queryset.exists():
+            queryset = self.get_queryset().exclude(id__in=excluded_ids)
+
+        if request.user and request.user.is_authenticated:
+            viewed_ids = ArticleView.objects.filter(
+                user=request.user,
+                viewed_at__gte=timezone.now() - timedelta(days=14),
+            ).values_list('article_id', flat=True)
+            queryset = queryset.exclude(id__in=viewed_ids)
+
+        if seed_article:
+            seed_tag_ids = list(seed_article.tags.values_list('id', flat=True))
+            queryset = queryset.annotate(
+                read_next_score=Case(
+                    When(category=seed_article.category, then=Value(40)),
+                    When(source=seed_article.source, then=Value(20)),
+                    When(tags__id__in=seed_tag_ids, then=Value(30)),
+                    default=Value(0),
+                    output_field=IntegerField(),
+                )
+            ).distinct().order_by('-read_next_score', *self._get_intelligence_ordering())
+            return queryset
+
+        if request.user and request.user.is_authenticated:
+            profile = UserProfile.objects.filter(user=request.user).first()
+            if profile:
+                followed_source_ids = list(profile.followed_sources.values_list('id', flat=True))
+                preferred_category_ids = list(profile.preferred_categories.values_list('id', flat=True))
+                queryset = queryset.annotate(
+                    read_next_score=Case(
+                        When(source_id__in=followed_source_ids, then=Value(30)),
+                        When(category_id__in=preferred_category_ids, then=Value(20)),
+                        default=Value(0),
+                        output_field=IntegerField(),
+                    )
+                ).order_by('-read_next_score', *self._get_intelligence_ordering())
+                return queryset
+
+        return queryset.order_by(*self._get_intelligence_ordering())
 
     @action(detail=False, methods=['get'])
     def search(self, request):
@@ -768,6 +833,24 @@ class ArticleViewSet(viewsets.ModelViewSet):
             recent_views__gt=0  # Must have at least some views
         ).order_by('-trending_score', '-recent_views', *self.feed_ordering)[:10]
 
+        serializer = self.get_serializer(queryset, many=True)
+        return Response(serializer.data)
+
+    @action(detail=False, methods=['get'], url_path='read_next')
+    def read_next(self, request):
+        """
+        Get compact "what you should read next" recommendations for feed inserts.
+
+        GET /api/articles/read_next/?limit=5&exclude_ids=1,2,3
+        GET /api/articles/read_next/?article_id=10&limit=5
+        """
+        try:
+            limit = int(request.query_params.get('limit', 5))
+        except (TypeError, ValueError):
+            limit = 5
+        limit = max(1, min(limit, 20))
+
+        queryset = self._read_next_queryset(request)[:limit]
         serializer = self.get_serializer(queryset, many=True)
         return Response(serializer.data)
 
