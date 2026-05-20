@@ -1,6 +1,7 @@
 from datetime import timedelta
 
-from django.db.models import Count, Q
+from django.db.models import Count, Q, Value
+from django.db.models.functions import Coalesce, NullIf
 from django.utils import timezone
 from rest_framework import generics
 from rest_framework.exceptions import NotFound
@@ -144,11 +145,12 @@ class EntityTopArticlesMixin:
         since = timezone.now().date() - timedelta(days=window_days)
         normalized_name = (entity_name or '').strip().lower()
         queryset = EntityMention.objects.filter(
-            normalized_name=normalized_name,
             mention_date__gte=since,
             enrichment__status='completed',
             enrichment__article__has_full_content=True,
             enrichment__article__source__is_active=True,
+        ).filter(
+            Q(normalized_name=normalized_name) | Q(entity_name__iexact=(entity_name or '').strip())
         ).select_related(
             'enrichment',
             'enrichment__article',
@@ -233,8 +235,10 @@ class TopEntitiesWithArticlesView(EntityTopArticlesMixin, generics.GenericAPIVie
             enrichment__status='completed',
             enrichment__article__has_full_content=True,
             enrichment__article__source__is_active=True,
+        ).annotate(
+            resolved_name=Coalesce(NullIf('normalized_name', Value('')), 'entity_name'),
         ).values(
-            'normalized_name',
+            'resolved_name',
             'entity_type',
         ).annotate(
             mention_count=Count('id'),
@@ -243,7 +247,7 @@ class TopEntitiesWithArticlesView(EntityTopArticlesMixin, generics.GenericAPIVie
         results = []
         for entity in entities:
             articles = self._ranked_articles_for_entity(
-                entity['normalized_name'],
+                entity['resolved_name'],
                 entity['entity_type'],
                 articles_per_entity,
                 window_days,
@@ -251,8 +255,8 @@ class TopEntitiesWithArticlesView(EntityTopArticlesMixin, generics.GenericAPIVie
             if not articles:
                 continue
             results.append({
-                'entity': entity['normalized_name'].title(),
-                'normalized_name': entity['normalized_name'],
+                'entity': entity['resolved_name'].title(),
+                'normalized_name': entity['resolved_name'],
                 'type': entity['entity_type'],
                 'mention_count': entity['mention_count'],
                 'articles': EntityTopArticleSerializer(articles, many=True).data,

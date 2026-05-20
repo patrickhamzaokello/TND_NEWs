@@ -229,14 +229,17 @@ class EntityExtractionAgent:
         for entity_type, entity_list in entity_map.items():
             for name in entity_list:
                 if name and name.strip():
+                    clean_name = name.strip()
+                    normalized_name = clean_name.lower()
                     canonical, _ = Entity.objects.get_or_create(
-                        normalized_name=name.strip().lower(),
+                        normalized_name=normalized_name,
                         entity_type=entity_type,
-                        defaults={'name': name.strip()},
+                        defaults={'name': clean_name},
                     )
                     mentions.append(EntityMention(
                         enrichment=enrichment,
-                        entity_name=name.strip(),
+                        entity_name=clean_name,
+                        normalized_name=normalized_name,
                         entity_type=entity_type,
                         mention_date=mention_date,
                         sentiment_score=enrichment.sentiment_score,
