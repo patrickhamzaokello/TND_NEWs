@@ -20,7 +20,8 @@ from .openai_client import (
     call_openai,
     parse_json_response,
 )
-from .models import ArticleCitation, ArticleClaim, ArticleEnrichment, DailyDigest, EntityMention, Entity
+from .models import ArticleCitation, ArticleClaim, ArticleEnrichment, DailyDigest, EntityMention
+from .entity_canonicalization import clean_entity_display_name, resolve_canonical_entity
 from .schemas import validate_article_analysis, validate_daily_digest
 from .prompts import (
     ARTICLE_ANALYSIS_SYSTEM,
@@ -229,17 +230,14 @@ class EntityExtractionAgent:
         for entity_type, entity_list in entity_map.items():
             for name in entity_list:
                 if name and name.strip():
-                    clean_name = name.strip()
-                    normalized_name = clean_name.lower()
-                    canonical, _ = Entity.objects.get_or_create(
-                        normalized_name=normalized_name,
-                        entity_type=entity_type,
-                        defaults={'name': clean_name},
-                    )
+                    clean_name = clean_entity_display_name(name)
+                    canonical = resolve_canonical_entity(clean_name, entity_type)
+                    if not canonical:
+                        continue
                     mentions.append(EntityMention(
                         enrichment=enrichment,
                         entity_name=clean_name,
-                        normalized_name=normalized_name,
+                        normalized_name=canonical.normalized_name,
                         entity_type=entity_type,
                         mention_date=mention_date,
                         sentiment_score=enrichment.sentiment_score,
