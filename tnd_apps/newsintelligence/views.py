@@ -28,6 +28,20 @@ class StandardResultsSetPagination(PageNumberPagination):
     max_page_size = 60
 
 
+class EntityTopArticlesPagination(PageNumberPagination):
+    page_size = 10
+    page_size_query_param = 'page_size'
+    max_page_size = 50
+
+    def get_page_size(self, request):
+        if self.page_size_query_param not in request.query_params and 'limit' in request.query_params:
+            try:
+                return max(1, min(int(request.query_params['limit']), self.max_page_size))
+            except (TypeError, ValueError):
+                return self.page_size
+        return super().get_page_size(request)
+
+
 class DailyDigestListView(generics.ListAPIView):
     queryset = DailyDigest.objects.all()
     serializer_class = DailyDigestListSerializer
@@ -281,18 +295,18 @@ class EntityTopArticlesMixin:
             '-enrichment__article__scraped_at',
         )
 
-    def _ranked_articles_for_entity(self, entity_name, entity_type=None, limit=5, window_days=14):
+    def _ranked_articles_for_entity(self, entity_name, entity_type=None, limit=None, window_days=14):
         mentions = self._entity_mentions(entity_name, entity_type, window_days)
         seen = set()
         ranked = []
 
-        for mention in mentions[:limit * 4]:
+        for mention in mentions:
             article = mention.enrichment.article
             if article.id in seen:
                 continue
             seen.add(article.id)
             ranked.append(article)
-            if len(ranked) >= limit:
+            if limit and len(ranked) >= limit:
                 break
 
         return ranked
@@ -300,6 +314,7 @@ class EntityTopArticlesMixin:
 
 class EntityTopArticlesView(EntityTopArticlesMixin, generics.GenericAPIView):
     permission_classes = [AllowAny]
+    pagination_class = EntityTopArticlesPagination
 
     def get(self, request):
         entity = request.query_params.get('entity', '').strip()
@@ -308,21 +323,21 @@ class EntityTopArticlesView(EntityTopArticlesMixin, generics.GenericAPIView):
             return Response({'error': 'entity query parameter is required'}, status=400)
 
         try:
-            limit = int(request.query_params.get('limit', 5))
             window_days = int(request.query_params.get('window_days', 14))
         except (TypeError, ValueError):
-            limit = 5
             window_days = 14
 
-        limit = max(1, min(limit, 20))
         window_days = max(1, min(window_days, 90))
-        articles = self._ranked_articles_for_entity(entity, entity_type, limit, window_days)
+        articles = self._ranked_articles_for_entity(entity, entity_type, window_days=window_days)
+        page = self.paginate_queryset(articles)
+        serializer = EntityTopArticleSerializer(page, many=True)
+        paginated = self.get_paginated_response(serializer.data).data
 
         return Response({
             'entity': entity,
             'type': entity_type,
             'window_days': window_days,
-            'results': EntityTopArticleSerializer(articles, many=True).data,
+            **paginated,
         })
 
 
