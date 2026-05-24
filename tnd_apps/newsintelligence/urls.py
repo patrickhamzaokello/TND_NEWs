@@ -11,6 +11,7 @@ from .views import (
     StoryClusterListView,
     TodayDigestView,
     EntityTopArticlesView,
+    EntityMentionCalendarView,
     TopEntitiesWithArticlesView,
     TrendingEntitiesView,
 )
@@ -28,6 +29,7 @@ urlpatterns = [
     path('stories/clusters/<slug:slug>/', StoryClusterDetailView.as_view(), name='story-cluster-detail'),
     path('stories/alerts/', StoryAlertListView.as_view(), name='story-alert-list'),
     path('entities/trending/', TrendingEntitiesView.as_view(), name='trending-entities'),
+    path('entities/mention-calendar/', EntityMentionCalendarView.as_view(), name='entity-mention-calendar'),
     path('entities/top-articles/', EntityTopArticlesView.as_view(), name='entity-top-articles'),
     path('entities/top-with-articles/', TopEntitiesWithArticlesView.as_view(), name='top-entities-with-articles'),
 

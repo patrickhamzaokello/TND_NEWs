@@ -1,9 +1,11 @@
 from rest_framework import serializers
 from .models import DailyDigest, Entity, StoryAlert, StoryCluster, StoryTimelineEvent, SourcePerspective
 from ..news_scrapping.models import Article
+from ..news_scrapping.serializers import CleanArticleTextRepresentationMixin
+from ..news_scrapping.text_cleaning import clean_article_text
 
 
-class ArticleSnippetSerializer(serializers.ModelSerializer):
+class ArticleSnippetSerializer(CleanArticleTextRepresentationMixin, serializers.ModelSerializer):
     """
     Lightweight article representation for embedding inside digest JSON fields.
     Used wherever an article_id appears in top_stories, story_threads, under_radar_story.
@@ -173,7 +175,7 @@ class EntitySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'normalized_name', 'entity_type', 'aliases', 'description']
 
 
-class EntityTopArticleSerializer(serializers.ModelSerializer):
+class EntityTopArticleSerializer(CleanArticleTextRepresentationMixin, serializers.ModelSerializer):
     source = serializers.CharField(source='source.name', read_only=True)
 
     class Meta:
@@ -214,7 +216,7 @@ class SourcePerspectiveSerializer(serializers.ModelSerializer):
 
     def get_article_title(self, obj):
         article = self._full_content_article(obj)
-        return article.title if article else None
+        return clean_article_text(article.title, preserve_paragraphs=False) if article else None
 
     def get_article_url(self, obj):
         article = self._full_content_article(obj)

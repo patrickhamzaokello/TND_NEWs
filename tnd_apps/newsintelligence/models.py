@@ -194,6 +194,8 @@ class EntityMention(models.Model):
         indexes = [
             models.Index(fields=['entity_name', 'mention_date']),
             models.Index(fields=['entity_type', 'mention_date']),
+            models.Index(fields=['normalized_name', 'mention_date']),
+            models.Index(fields=['normalized_name', 'entity_type', 'mention_date']),
         ]
 
 
