@@ -9,6 +9,7 @@ import re
 from dateutil import parser
 from django.conf import settings
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
+from .text_cleaning import clean_article_text
 
 
 class NewsSource(models.Model):
@@ -177,6 +178,10 @@ class Article(models.Model):
         return re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', (title or '').lower())).strip()
 
     def save(self, *args, **kwargs):
+        self.title = clean_article_text(self.title, preserve_paragraphs=False)
+        self.excerpt = clean_article_text(self.excerpt)
+        self.content = clean_article_text(self.content)
+        self.image_caption = clean_article_text(self.image_caption)
         if not self.slug and self.title:
             from django.utils.text import slugify
             self.slug = slugify(self.title)[:200]

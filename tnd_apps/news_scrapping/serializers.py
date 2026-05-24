@@ -1,5 +1,20 @@
 from rest_framework import serializers
 from .models import NewsSource, Comment, Category, Tag, Author, Article, UserProfile, ArticleView, PushToken,UserNotification
+from .text_cleaning import clean_article_text
+
+
+class CleanArticleTextRepresentationMixin:
+    clean_text_fields = ('title', 'excerpt', 'content', 'image_caption')
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        for field in self.clean_text_fields:
+            if field in data and data[field]:
+                data[field] = clean_article_text(
+                    data[field],
+                    preserve_paragraphs=(field == 'content'),
+                )
+        return data
 
 
 class NewsSourceSerializer(serializers.ModelSerializer):
@@ -32,7 +47,7 @@ class AuthorSerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'profile_url', 'source']
 
 
-class ArticleListSerializer(serializers.ModelSerializer):
+class ArticleListSerializer(CleanArticleTextRepresentationMixin, serializers.ModelSerializer):
     source = NewsSourceSerializer(read_only=True)
     category = CategorySerializer(read_only=True)
     source_name = serializers.CharField(source='source.name', read_only=True)
@@ -51,7 +66,7 @@ class ArticleListSerializer(serializers.ModelSerializer):
         ]
 
 
-class ArticleReadNextSerializer(serializers.ModelSerializer):
+class ArticleReadNextSerializer(CleanArticleTextRepresentationMixin, serializers.ModelSerializer):
     source = NewsSourceSerializer(read_only=True)
     source_name = serializers.CharField(source='source.name', read_only=True)
 
@@ -185,7 +200,7 @@ class ArticleViewSerializer(serializers.ModelSerializer):
         fields = ['id', 'user', 'article', 'viewed_at', 'duration_seconds']
 
 
-class NotificationArticleSerializer(serializers.ModelSerializer):
+class NotificationArticleSerializer(CleanArticleTextRepresentationMixin, serializers.ModelSerializer):
     """Simplified article serializer for notifications"""
 
     source_name = serializers.CharField(source='source.name', read_only=True)
