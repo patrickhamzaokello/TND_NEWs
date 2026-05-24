@@ -34,10 +34,13 @@ GET /intelligence/entities/top-articles/?entity=uganda parliament&type=organizat
       "slug": "parliament-passes-new-bill",
       "excerpt": "The article excerpt...",
       "source": "Daily Monitor",
-      "featured_image_url": "https://example.com/image.jpg"
+      "featured_image_url": "https://example.com/image.jpg",
+      "published_at": "2026-05-12T15:20:00+03:00",
+      "mention_date": "2026-05-12"
     }
   ]
 }
 ```
 
 Articles are ranked by enrichment importance, view count, mention recency, and scrape recency. Duplicate article mentions are collapsed so each article appears once.
+`mention_date` is the date attached to the entity mention row. `published_at` is the article's publication timestamp.

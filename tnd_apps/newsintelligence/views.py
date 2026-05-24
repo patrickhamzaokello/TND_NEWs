@@ -305,6 +305,7 @@ class EntityTopArticlesMixin:
             if article.id in seen:
                 continue
             seen.add(article.id)
+            article._entity_mention_date = mention.mention_date
             ranked.append(article)
             if limit and len(ranked) >= limit:
                 break

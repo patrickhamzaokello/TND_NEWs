@@ -177,6 +177,7 @@ class EntitySerializer(serializers.ModelSerializer):
 
 class EntityTopArticleSerializer(CleanArticleTextRepresentationMixin, serializers.ModelSerializer):
     source = serializers.CharField(source='source.name', read_only=True)
+    mention_date = serializers.SerializerMethodField()
 
     class Meta:
         model = Article
@@ -187,7 +188,13 @@ class EntityTopArticleSerializer(CleanArticleTextRepresentationMixin, serializer
             'excerpt',
             'source',
             'featured_image_url',
+            'published_at',
+            'mention_date',
         ]
+
+    def get_mention_date(self, obj):
+        mention_date = getattr(obj, '_entity_mention_date', None)
+        return mention_date.isoformat() if mention_date else None
 
 
 class SourcePerspectiveSerializer(serializers.ModelSerializer):
