@@ -208,14 +208,14 @@ class NilePostScraper:
 
     def _get_or_create_category(self, name: str) -> Category:
         name = (name or "News").strip() or "News"
-        category, _ = Category.objects.get_or_create(slug=slugify(name), defaults={"name": name})
+        category, _ = Category.objects.get_or_create(slug=slugify(name)[:50], defaults={"name": name})
         return category
 
     def _get_or_create_tag(self, name: str) -> Tag | None:
         name = (name or "").strip()
         if not name:
             return None
-        tag, _ = Tag.objects.get_or_create(slug=slugify(name), defaults={"name": name})
+        tag, _ = Tag.objects.get_or_create(slug=slugify(name)[:50], defaults={"name": name})
         return tag
 
     def _get_or_create_author(self, name: str, profile_url: str = "") -> Author | None:

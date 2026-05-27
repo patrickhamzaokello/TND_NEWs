@@ -47,7 +47,7 @@ class NewsSource(models.Model):
 class Category(models.Model):
     """Model for news categories"""
     name = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, max_length=120)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -74,7 +74,7 @@ class UserProfile(models.Model):
 class Tag(models.Model):
     """Model for news tags"""
     name = models.CharField(max_length=100, unique=True)
-    slug = models.SlugField(unique=True)
+    slug = models.SlugField(unique=True, max_length=120)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):
@@ -110,7 +110,7 @@ class Article(models.Model):
     ]
 
     # Unique identifier and basic info
-    external_id = models.CharField(max_length=50, db_index=True)  # post-46006
+    external_id = models.CharField(max_length=120, db_index=True)  # post-46006
     url = models.URLField(unique=True, max_length=500)
     canonical_url = models.URLField(max_length=500, blank=True)
     source_published_id = models.CharField(max_length=120, blank=True)
@@ -174,6 +174,16 @@ class Article(models.Model):
         return hashlib.sha256(value.encode('utf-8')).hexdigest()
 
     @staticmethod
+    def _bounded_identifier(value, max_length=120):
+        value = clean_article_text(value, preserve_paragraphs=False)
+        if not value:
+            return ''
+        if len(value) <= max_length:
+            return value
+        digest = hashlib.sha1(value.encode('utf-8')).hexdigest()[:16]
+        return f"{value[:max_length - 17]}-{digest}"
+
+    @staticmethod
     def normalize_title(title):
         return re.sub(r'\s+', ' ', re.sub(r'[^\w\s]', ' ', (title or '').lower())).strip()
 
@@ -182,6 +192,8 @@ class Article(models.Model):
         self.excerpt = clean_article_text(self.excerpt)
         self.content = clean_article_text(self.content)
         self.image_caption = clean_article_text(self.image_caption)
+        self.external_id = self._bounded_identifier(self.external_id, 120)
+        self.source_published_id = self._bounded_identifier(self.source_published_id, 120)
         if not self.slug and self.title:
             from django.utils.text import slugify
             self.slug = slugify(self.title)[:200]
