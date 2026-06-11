@@ -6,6 +6,8 @@ from .views import (
     DailyDigestListView,
     DigestApproveView,
     DigestRejectView,
+    ArticleGuidanceView,
+    FeedInterleavesView,
     StoryAlertListView,
     StoryClusterDetailView,
     StoryClusterListView,
@@ -19,6 +21,8 @@ from .views import (
 app_name = 'digests'  # optional
 
 urlpatterns = [
+    path('feed/interleaves/', FeedInterleavesView.as_view(), name='feed-interleaves'),
+    path('articles/<int:article_id>/guidance/', ArticleGuidanceView.as_view(), name='article-guidance'),
     path('digests/', DailyDigestListView.as_view(), name='digest-list'),
     path('digests/today/', TodayDigestView.as_view(), name='digest-today'),
     path('digests/date/<slug:digest_date>/', DailyDigestByDateView.as_view(), name='digest-by-date'),

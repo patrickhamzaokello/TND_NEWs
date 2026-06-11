@@ -1,4 +1,6 @@
 import calendar
+import base64
+import json
 from datetime import date, timedelta
 
 from django.db.models import Count, Q, Value
@@ -11,11 +13,14 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from .models import DailyDigest, Entity, EntityMention, StoryAlert, StoryCluster
+from ..news_scrapping.models import Article
+from .models import DailyDigest, Entity, EntityMention, SourcePerspective, StoryAlert, StoryCluster
 from .serializers import (
+    ArticleSnippetSerializer,
     DailyDigestDetailSerializer,
     DailyDigestListSerializer,
     EntityTopArticleSerializer,
+    FeedInterleaveRequestSerializer,
     StoryAlertSerializer,
     StoryClusterDetailSerializer,
     StoryClusterListSerializer,
@@ -40,6 +45,318 @@ class EntityTopArticlesPagination(PageNumberPagination):
             except (TypeError, ValueError):
                 return self.page_size
         return super().get_page_size(request)
+
+
+class FeedInterleavesView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+    serializer_class = FeedInterleaveRequestSerializer
+
+    def post(self, request):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+
+        visible_ids = list(dict.fromkeys(data.get('visible_article_ids') or []))
+        limit = data.get('limit') or 6
+        offset = _decode_cursor(data.get('cursor'))
+        candidates = self._build_candidates(visible_ids, data.get('surface') or 'home')
+        window = candidates[offset:offset + limit]
+        next_offset = offset + len(window)
+
+        return Response({
+            'results': window,
+            'next_cursor': _encode_cursor(next_offset) if next_offset < len(candidates) else None,
+        })
+
+    def _build_candidates(self, visible_ids, surface):
+        insert_after = visible_ids[-1] if visible_ids else None
+        candidates = []
+        candidates.extend(self._cluster_guides(visible_ids, insert_after))
+        candidates.extend(self._alert_guides(visible_ids, insert_after))
+        candidates.extend(self._entity_guides(visible_ids, insert_after))
+        candidates.extend(self._context_guides(visible_ids, insert_after))
+
+        seen = set()
+        unique = []
+        for item in sorted(candidates, key=lambda item: item.get('confidence', 0), reverse=True):
+            if item['id'] in seen:
+                continue
+            seen.add(item['id'])
+            item.setdefault('payload', {})
+            item['payload']['surface'] = surface
+            unique.append(item)
+        return unique
+
+    def _cluster_guides(self, visible_ids, insert_after):
+        if not visible_ids:
+            clusters = StoryCluster.objects.annotate(
+                article_count=Count('cluster_articles', distinct=True),
+                source_count=Count('cluster_articles__article__source', distinct=True),
+            ).filter(article_count__gte=2).order_by('-importance_score', '-last_seen_at')[:8]
+        else:
+            clusters = StoryCluster.objects.filter(
+                cluster_articles__article_id__in=visible_ids,
+            ).annotate(
+                article_count=Count('cluster_articles', distinct=True),
+                source_count=Count('cluster_articles__article__source', distinct=True),
+            ).order_by('-importance_score', '-last_seen_at')[:8]
+
+        guides = []
+        for cluster in clusters:
+            source_count = getattr(cluster, 'source_count', 0)
+            article_count = getattr(cluster, 'article_count', 0)
+            reason = (
+                f"This story is appearing across {source_count} sources and "
+                f"{article_count} related articles."
+            )
+            if cluster.why_this_matters:
+                reason = cluster.why_this_matters
+            guides.append({
+                'id': f'cluster-{cluster.id}',
+                'insert_after_article_id': insert_after,
+                'type': 'cluster',
+                'label': 'NWITQ guide',
+                'title': cluster.title or 'Follow this story thread',
+                'reason': reason,
+                'cta_label': 'Open story thread',
+                'target': {'route': 'story_cluster', 'slug': cluster.slug},
+                'confidence': min(0.95, 0.55 + ((cluster.importance_score or 0) / 20)),
+                'expires_at': _guide_expires_at(),
+                'payload': {
+                    'cluster_id': cluster.id,
+                    'article_count': article_count,
+                    'source_count': source_count,
+                },
+            })
+        return guides
+
+    def _alert_guides(self, visible_ids, insert_after):
+        alerts = StoryAlert.objects.select_related('cluster', 'article').filter(
+            article__has_full_content=True,
+        ).exclude(status='suppressed')
+        if visible_ids:
+            alerts = alerts.filter(Q(article_id__in=visible_ids) | Q(cluster__cluster_articles__article_id__in=visible_ids))
+        alerts = alerts.order_by('-importance_score', '-created_at').distinct()[:6]
+
+        return [
+            {
+                'id': f'alert-{alert.id}',
+                'insert_after_article_id': insert_after or alert.article_id,
+                'type': 'alert',
+                'label': 'NWITQ alert',
+                'title': alert.title,
+                'reason': alert.reason,
+                'cta_label': 'View update',
+                'target': {'route': 'story_cluster', 'slug': alert.cluster.slug},
+                'confidence': min(0.98, 0.6 + ((alert.importance_score or 0) / 20)),
+                'expires_at': _guide_expires_at(hours=3),
+                'payload': {'alert_id': alert.id, 'article_id': alert.article_id},
+            }
+            for alert in alerts
+        ]
+
+    def _entity_guides(self, visible_ids, insert_after):
+        mentions = EntityMention.objects.filter(
+            enrichment__status='completed',
+            enrichment__article__has_full_content=True,
+        )
+        if visible_ids:
+            mentions = mentions.filter(enrichment__article_id__in=visible_ids)
+        else:
+            mentions = mentions.filter(mention_date__gte=timezone.localdate() - timedelta(days=7))
+
+        rows = mentions.values('normalized_name', 'entity_type').annotate(
+            mention_count=Count('id'),
+            article_count=Count('enrichment__article_id', distinct=True),
+        ).filter(mention_count__gte=2).order_by('-mention_count')[:8]
+
+        guides = []
+        for row in rows:
+            entity_name = row['normalized_name']
+            guides.append({
+                'id': f"entity-{row['entity_type']}-{entity_name.replace(' ', '-')}",
+                'insert_after_article_id': insert_after,
+                'type': 'entity',
+                'label': 'Entity watch',
+                'title': entity_name.title(),
+                'reason': (
+                    f"Mentioned {row['mention_count']} times across "
+                    f"{row['article_count']} articles in this reading context."
+                ),
+                'cta_label': 'See entity coverage',
+                'target': {
+                    'route': 'entity_detail',
+                    'entity': entity_name,
+                    'type': row['entity_type'],
+                },
+                'confidence': min(0.92, 0.5 + (row['mention_count'] / 20)),
+                'expires_at': _guide_expires_at(),
+                'payload': row,
+            })
+        return guides
+
+    def _context_guides(self, visible_ids, insert_after):
+        if not visible_ids:
+            return []
+        enrichments = Article.objects.filter(
+            id__in=visible_ids,
+            has_full_content=True,
+            enrichment__status='completed',
+        ).select_related('enrichment').order_by('-enrichment__importance_score')[:6]
+
+        guides = []
+        for article in enrichments:
+            enrichment = article.enrichment
+            notes = enrichment.bias_or_framing_notes or []
+            local_impact = enrichment.local_impact or {}
+            reason = ''
+            if notes:
+                reason = str(notes[0])
+            elif local_impact:
+                reason = 'This story has local impact context worth checking before moving on.'
+            elif enrichment.follow_up_worthy:
+                reason = 'This article connects to a developing story worth following.'
+            if not reason:
+                continue
+            guides.append({
+                'id': f'context-{article.id}',
+                'insert_after_article_id': article.id,
+                'type': 'context',
+                'label': 'NWITQ context',
+                'title': 'Before you move on',
+                'reason': reason,
+                'cta_label': 'Open guidance',
+                'target': {'route': 'article_guidance', 'article_id': article.id},
+                'confidence': min(0.9, 0.5 + ((enrichment.importance_score or 0) / 20)),
+                'expires_at': _guide_expires_at(),
+                'payload': {'article_id': article.id},
+            })
+        return guides
+
+
+class ArticleGuidanceView(generics.GenericAPIView):
+    permission_classes = [AllowAny]
+
+    def get(self, request, article_id):
+        article = Article.objects.select_related(
+            'source',
+            'category',
+            'author',
+            'enrichment',
+        ).filter(id=article_id, has_full_content=True).first()
+        if not article:
+            raise NotFound('Article not found.')
+
+        enrichment = getattr(article, 'enrichment', None)
+        cluster = StoryCluster.objects.filter(cluster_articles__article=article).annotate(
+            article_count=Count('cluster_articles', distinct=True),
+            source_count=Count('cluster_articles__article__source', distinct=True),
+        ).order_by('-importance_score', '-last_seen_at').first()
+
+        key_entities = []
+        if enrichment:
+            key_entities = list(
+                EntityMention.objects.filter(enrichment=enrichment)
+                .values('entity_name', 'normalized_name', 'entity_type')
+                .order_by('entity_type', 'entity_name')[:12]
+            )
+
+        suggested = self._suggested_next_reads(article, cluster, enrichment)
+
+        return Response({
+            'article': ArticleSnippetSerializer(article).data,
+            'related_cluster': self._cluster_payload(cluster),
+            'key_entities': key_entities,
+            'why_it_matters': self._why_it_matters(article, enrichment, cluster),
+            'missing_context': self._missing_context(article, enrichment, cluster),
+            'suggested_next_reads': ArticleSnippetSerializer(suggested, many=True).data,
+        })
+
+    def _cluster_payload(self, cluster):
+        if not cluster:
+            return None
+        return {
+            'id': cluster.id,
+            'title': cluster.title,
+            'slug': cluster.slug,
+            'summary': cluster.summary,
+            'why_this_matters': cluster.why_this_matters,
+            'importance_score': cluster.importance_score,
+            'article_count': getattr(cluster, 'article_count', 0),
+            'source_count': getattr(cluster, 'source_count', 0),
+        }
+
+    def _why_it_matters(self, article, enrichment, cluster):
+        if cluster and cluster.why_this_matters:
+            return cluster.why_this_matters
+        if enrichment and enrichment.local_impact:
+            return enrichment.local_impact
+        if enrichment and enrichment.summary:
+            return enrichment.summary
+        return article.excerpt
+
+    def _missing_context(self, article, enrichment, cluster):
+        context = []
+        if enrichment:
+            context.extend(enrichment.bias_or_framing_notes or [])
+        if cluster:
+            perspectives = SourcePerspective.objects.filter(cluster=cluster).exclude(article=article)
+            for perspective in perspectives[:5]:
+                if perspective.omitted_context:
+                    context.append({
+                        'source': perspective.source.name,
+                        'omitted_context': perspective.omitted_context,
+                    })
+        return context
+
+    def _suggested_next_reads(self, article, cluster, enrichment):
+        if cluster:
+            articles = Article.objects.filter(
+                story_cluster_links__cluster=cluster,
+                has_full_content=True,
+            ).exclude(id=article.id).select_related('source', 'category', 'author').order_by(
+                '-enrichment__importance_score',
+                '-published_at',
+            )[:5]
+            if articles:
+                return list(articles)
+
+        entity_names = []
+        if enrichment:
+            entity_names = list(
+                EntityMention.objects.filter(enrichment=enrichment)
+                .values_list('normalized_name', flat=True)[:5]
+            )
+        if not entity_names:
+            return []
+        return list(
+            Article.objects.filter(
+                enrichment__entity_mentions__normalized_name__in=entity_names,
+                has_full_content=True,
+            ).exclude(id=article.id).select_related('source', 'category', 'author').distinct().order_by(
+                '-enrichment__importance_score',
+                '-published_at',
+            )[:5]
+        )
+
+
+def _encode_cursor(offset):
+    payload = json.dumps({'offset': offset}).encode('utf-8')
+    return base64.urlsafe_b64encode(payload).decode('ascii')
+
+
+def _decode_cursor(cursor):
+    if not cursor:
+        return 0
+    try:
+        payload = base64.urlsafe_b64decode(cursor.encode('ascii'))
+        return max(0, int(json.loads(payload).get('offset', 0)))
+    except (TypeError, ValueError, json.JSONDecodeError):
+        return 0
+
+
+def _guide_expires_at(hours=6):
+    return (timezone.now() + timedelta(hours=hours)).isoformat()
 
 
 class DailyDigestListView(generics.ListAPIView):

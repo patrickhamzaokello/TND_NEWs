@@ -175,6 +175,18 @@ class EntitySerializer(serializers.ModelSerializer):
         fields = ['id', 'name', 'normalized_name', 'entity_type', 'aliases', 'description']
 
 
+class FeedInterleaveRequestSerializer(serializers.Serializer):
+    surface = serializers.CharField(required=False, default='home', allow_blank=True)
+    visible_article_ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        required=False,
+        default=list,
+    )
+    cursor = serializers.CharField(required=False, allow_blank=True, allow_null=True)
+    limit = serializers.IntegerField(required=False, default=6, min_value=1, max_value=20)
+    timezone = serializers.CharField(required=False, default='Africa/Kampala', allow_blank=True)
+
+
 class EntityTopArticleSerializer(CleanArticleTextRepresentationMixin, serializers.ModelSerializer):
     source = serializers.CharField(source='source.name', read_only=True)
     mention_date = serializers.SerializerMethodField()
