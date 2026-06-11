@@ -18,10 +18,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
  && rm -rf /var/lib/apt/lists/*
 
-# Replace opencv-python with headless version
-RUN pip install --no-cache-dir -r requirements.txt && \
-    pip uninstall -y opencv-python && \
-    pip install --no-cache-dir opencv-python-headless
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 
