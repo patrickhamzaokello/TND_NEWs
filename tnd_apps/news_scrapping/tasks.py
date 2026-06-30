@@ -11,6 +11,7 @@ from .dm_scrapper import MonitorNewsDjangoScraper
 from .exclusive_bizz_scrapper import ExclusiveCoUgScraper
 from .chimpreports_scrapper import ChimpReportsScraper
 from .ubc_scrapper import UBCScraper
+from .kawowo_scrapper import KawowoScraper
 import traceback
 from django.utils import timezone
 from django.core.management import call_command
@@ -353,6 +354,103 @@ def scrape_dokolo_post(self, get_full_content=True, max_articles=None, source_na
             raise self.retry(countdown=self.default_retry_delay, exc=exc)
 
         raise exc
+
+KAWOWO_SECTIONS: dict[str, str] = {
+    "home":       "https://kawowo.com",
+    "football":   "https://kawowo.com/category/football",
+    "basketball": "https://kawowo.com/category/basketball",
+    "athletics":  "https://kawowo.com/category/athletics",
+    "rugby":      "https://kawowo.com/category/rugby",
+    "boxing":     "https://kawowo.com/category/boxing",
+    "netball":    "https://kawowo.com/category/netball",
+}
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    name="tnd_apps.news_scrapping.tasks.scrape_kawowo_section",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def scrape_kawowo_section(
+    self,
+    section: str = "home",
+    get_full_content: bool = True,
+    max_articles: int | None = None,
+    max_pages: int = 1,
+    start_page: int = 1,
+    source_name: str = "Kawowo Sports",
+):
+    """
+    Scrape a single Kawowo Sports section and persist articles to the database.
+
+    Args:
+        section:          One of the keys in KAWOWO_SECTIONS
+                          ('home', 'football', 'basketball', 'athletics', …)
+        get_full_content: Visit each article's detail page for full body text.
+        max_articles:     Hard cap on articles processed (None = unlimited).
+        max_pages:        How many listing pages to paginate through.
+        start_page:       Listing page to start from (1-indexed).
+        source_name:      NewsSource.name to look up / create.
+    """
+    section = section.lower()
+    if section not in KAWOWO_SECTIONS:
+        valid = ", ".join(KAWOWO_SECTIONS)
+        raise ValueError(f"Unknown Kawowo section '{section}'. Valid: {valid}")
+
+    listing_url = KAWOWO_SECTIONS[section]
+    task_id = self.request.id
+
+    logger.info(
+        "Starting Kawowo scrape | section=%s | url=%s | full_content=%s | "
+        "max_articles=%s | max_pages=%s | task_id=%s",
+        section, listing_url, get_full_content, max_articles, max_pages, task_id,
+    )
+
+    try:
+        scraper = KawowoScraper(source_name=source_name, headless=True)
+
+        result = scraper.scrape_and_save(
+            get_full_content=get_full_content,
+            max_articles=max_articles,
+            start_page=start_page,
+            max_pages=max_pages,
+            news_url=listing_url,
+        )
+
+        run = (
+            ScrapingRun.objects.filter(source=scraper.source)
+            .order_by("-started_at")
+            .first()
+        )
+        if run and not run.task_id:
+            run.task_id = task_id
+            run.save(update_fields=["task_id"])
+
+        logger.info(
+            "Kawowo scrape complete | section=%s | added=%s | updated=%s | "
+            "skipped=%s | errors=%s | duration=%ss",
+            section,
+            result.get("articles_added", 0),
+            result.get("articles_updated", 0),
+            result.get("articles_skipped", 0),
+            result.get("errors", 0),
+            result.get("duration", "?"),
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(
+            "Kawowo scrape FAILED | section=%s | task_id=%s | error=%s\n%s",
+            section, task_id, exc, traceback.format_exc(),
+        )
+        _mark_run_failed(task_id, str(exc))
+        if self.request.retries < self.max_retries:
+            raise self.retry(countdown=self.default_retry_delay, exc=exc)
+        raise exc
+
 
 @shared_task
 def send_scheduled_notifications():
