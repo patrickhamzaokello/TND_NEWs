@@ -95,4 +95,24 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=45, hour='*/3'),  # :45
         'kwargs': {'section': 'security', 'get_full_content': True, 'max_pages': 2},
     },
+    'scrape-observer-news': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_observer_section',
+        'schedule': crontab(minute=5, hour='*/3'),   # :05 — 00:05, 03:05, 06:05 …
+        'kwargs': {'section': 'news', 'get_full_content': True, 'max_articles': 25, 'max_pages': 2},
+    },
+    'scrape-observer-business': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_observer_section',
+        'schedule': crontab(minute=25, hour='*/3'),  # :25
+        'kwargs': {'section': 'business', 'get_full_content': True, 'max_articles': 20, 'max_pages': 2},
+    },
+    'scrape-kawowo-home': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_kawowo_section',
+        'schedule': crontab(minute=50, hour='*/3'),  # :50 — 00:50, 03:50, 06:50 …
+        'kwargs': {'section': 'home', 'get_full_content': True, 'max_articles': 25, 'max_pages': 2},
+    },
+    'scrape-kawowo-football': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_kawowo_section',
+        'schedule': crontab(minute=55, hour='*/3'),  # :55
+        'kwargs': {'section': 'football', 'get_full_content': True, 'max_articles': 25, 'max_pages': 2},
+    },
 }
