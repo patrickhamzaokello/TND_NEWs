@@ -65,6 +65,7 @@ DJANGO_APPS = [
 ]
 
 THIRD_PARTY_APPS = [
+    'channels',
     'rest_framework',
     'rest_framework_simplejwt.token_blacklist',
     'corsheaders',
@@ -128,6 +129,19 @@ TEMPLATES = [
 ]
 
 WSGI_APPLICATION = 'TNDNEWS.wsgi.application'
+ASGI_APPLICATION = 'TNDNEWS.asgi.application'
+
+# Real-time article streaming (Django Channels) — reuses the same Redis
+# instance as Celery/cache. REDIS_DATABASE_SERVER_HOST is expected to be a
+# full redis:// URL (already used as CELERY_BROKER_URL / cache LOCATION).
+CHANNEL_LAYERS = {
+    'default': {
+        'BACKEND': 'channels_redis.core.RedisChannelLayer',
+        'CONFIG': {
+            'hosts': [config('REDIS_DATABASE_SERVER_HOST')],
+        },
+    },
+}
 
 
 # Database

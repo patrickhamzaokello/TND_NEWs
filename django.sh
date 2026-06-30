@@ -11,8 +11,9 @@ python manage.py migrate --noinput || {
     echo "❌ Failed to migrate files"; exit 1;
 }
 
-echo "🚀 Starting Gunicorn server"
-exec gunicorn TNDNEWS.wsgi:application \
+echo "🚀 Starting Gunicorn (Uvicorn ASGI workers — serves HTTP + WebSocket)"
+exec gunicorn TNDNEWS.asgi:application \
+  -k uvicorn.workers.UvicornWorker \
   --bind 0.0.0.0:6200 \
   --workers 3 \
   --access-logfile - \
