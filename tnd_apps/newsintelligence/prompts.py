@@ -103,17 +103,8 @@ Return this exact JSON structure:
 
   "claims": [
     {{
-      "claim": "<A specific factual claim made in the article — attribute it: 'According to [source], ...' or '[Name] said ...'  >",
-      "evidence_text": "<verbatim or very close paraphrase from the article supporting this claim>",
+      "claim": "<A specific factual claim made in the article — attribute it: 'According to [source], ...' or '[Name] said ...' — one sentence max>",
       "confidence": <float 0.0-1.0 — lower if single source, unverified, or contradicted elsewhere>
-    }}
-  ],
-
-  "citations": [
-    {{
-      "title": "{title}",
-      "source": "{source}",
-      "evidence_text": "<key passage from the article that supports the summary or claims>"
     }}
   ],
 
@@ -243,7 +234,7 @@ Return this exact JSON structure:
 
   "story_threads": [
     {{
-      "thread_name": "<Specific Uganda story arc name — e.g. 'NSSF Reform Standoff', 'Kasese Flooding Crisis', 'Bobi Wine Harassment Cases 2025'>",
+      "thread_name": "<Use the story arc name from the articles' story_arcs field where possible — e.g. 'NSSF Reform Standoff', 'Kasese Flooding Crisis', 'Bobi Wine Harassment Cases 2025'. Group articles that share the same arc name or cover the same developing event.>",
       "description": "<1 sentence: the current state of this ongoing story and what the key tension or unresolved question is>",
       "article_ids": [<int>, ...]
     }}
@@ -270,7 +261,7 @@ Return this exact JSON structure:
 RULES:
 - All article_id values must come from the input. Do not invent IDs.
 - top_stories: 3–5 stories. On low-volume days, include only what is genuinely significant.
-- story_threads: only include threads with 2+ articles. Omit the field entirely if none qualify.
+- story_threads: group articles by their story_arcs field first — articles sharing the same arc name belong in the same thread. Only include threads with 2+ articles. Omit the field entirely if none qualify.
 - sector_sentiment: use 0.0 for sectors with no coverage today. Do not omit any sector key.
 - trending_entities: top 5 most significant, prioritising those that explain something important
   about today's news — not just the most frequently mentioned.

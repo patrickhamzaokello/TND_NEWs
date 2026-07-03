@@ -177,13 +177,13 @@ class EnrichmentService:
 
     def get_pipeline_stats(self) -> dict:
         """Quick stats for monitoring dashboards."""
-        from django.db.models import Count, Sum, Avg
+        from django.db.models import Count, Q, Sum, Avg
 
         enrichment_stats = ArticleEnrichment.objects.aggregate(
             total=Count('id'),
-            completed=Count('id', filter=__import__('django.db.models', fromlist=['Q']).Q(status='completed')),
-            failed=Count('id', filter=__import__('django.db.models', fromlist=['Q']).Q(status='failed')),
-            pending=Count('id', filter=__import__('django.db.models', fromlist=['Q']).Q(status='pending')),
+            completed=Count('id', filter=Q(status='completed')),
+            failed=Count('id', filter=Q(status='failed')),
+            pending=Count('id', filter=Q(status='pending')),
         )
 
         cost_stats = EnrichmentRun.objects.aggregate(

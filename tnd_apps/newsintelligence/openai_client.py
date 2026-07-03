@@ -30,6 +30,15 @@ MODEL_PRICING = {
 ENRICHMENT_MODEL = getattr(settings, 'ENRICHMENT_MODEL', 'gpt-4o-mini')
 DIGEST_MODEL = getattr(settings, 'DIGEST_MODEL', 'gpt-4o-mini')
 
+_client: 'openai.OpenAI | None' = None
+
+
+def _get_client() -> 'openai.OpenAI':
+    global _client
+    if _client is None:
+        _client = openai.OpenAI(api_key=settings.OPENAI_API_KEY, timeout=60.0)
+    return _client
+
 
 # ── Response wrapper ──────────────────────────────────────────────────────────
 
@@ -71,10 +80,7 @@ def call_openai(
       - Request timeout (default 60s)
       - Detailed logging on failure
     """
-    client = openai.OpenAI(
-        api_key=settings.OPENAI_API_KEY,
-        timeout=timeout,
-    )
+    client = _get_client()
 
     for attempt in range(1, max_retries + 1):
         try:

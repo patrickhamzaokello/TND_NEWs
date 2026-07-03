@@ -20,7 +20,7 @@ from .openai_client import (
     call_openai,
     parse_json_response,
 )
-from .models import ArticleCitation, ArticleClaim, ArticleEnrichment, DailyDigest, EntityMention
+from .models import ArticleClaim, ArticleEnrichment, DailyDigest, EntityMention
 from .entity_canonicalization import clean_entity_display_name, resolve_canonical_entity
 from .schemas import validate_article_analysis, validate_daily_digest
 from .prompts import (
@@ -108,7 +108,7 @@ class ArticleAnalysisAgent:
             system=ARTICLE_ANALYSIS_SYSTEM,
             user=prompt,
             model=ENRICHMENT_MODEL,
-            max_tokens=1800,
+            max_tokens=1200,
         )
         parsed = parse_json_response(llm_response.content)
         parsed = validate_article_analysis(parsed, article)
@@ -173,30 +173,16 @@ class ArticleAnalysisAgent:
         enrichment.save()
 
         ArticleClaim.objects.filter(enrichment=enrichment).delete()
-        ArticleCitation.objects.filter(enrichment=enrichment).delete()
-
         ArticleClaim.objects.bulk_create([
             ArticleClaim(
                 article=enrichment.article,
                 enrichment=enrichment,
                 claim_text=claim.get('claim', ''),
-                evidence_text=claim.get('evidence_text', ''),
+                evidence_text='',
                 confidence=claim.get('confidence', 0.0),
             )
             for claim in enrichment.claims
             if claim.get('claim')
-        ])
-
-        ArticleCitation.objects.bulk_create([
-            ArticleCitation(
-                article=enrichment.article,
-                enrichment=enrichment,
-                url=citation.get('url') or enrichment.article.url,
-                title=citation.get('title') or enrichment.article.title,
-                source_name=citation.get('source') or enrichment.article.source.name,
-                evidence_text=citation.get('evidence_text', ''),
-            )
-            for citation in enrichment.citations
         ])
 
 
@@ -330,17 +316,18 @@ class DailyDigestAgent:
     def _build_articles_payload(self, enrichments) -> list:
         return [
             {
-                'id':        e.article_id,
-                'title':     e.article.title,
-                'source':    e.article.source.name,
-                'summary':   e.summary,
-                'sentiment': e.sentiment,
-                'importance': e.importance_score,
-                'themes':    e.themes,
-                'key_facts': e.key_facts[:3],
-                'citations': e.citations[:3],
-                'local_impact': e.local_impact,
-                'follow_up': e.follow_up_worthy,
+                'id':             e.article_id,
+                'title':          e.article.title,
+                'source':         e.article.source.name,
+                'summary':        e.summary,
+                'sentiment':      e.sentiment,
+                'importance':     e.importance_score,
+                'themes':         e.themes,
+                'story_arcs':     e.related_themes,
+                'key_facts':      e.key_facts[:3],
+                'local_impact':   e.local_impact,
+                'follow_up':      e.follow_up_worthy,
+                'controversy':    e.controversy_flag,
             }
             for e in enrichments
         ]

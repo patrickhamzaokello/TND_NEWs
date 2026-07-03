@@ -330,3 +330,61 @@ websocat "wss://newsapi.mwonya.com/ws/articles/stream/?token=<ACCESS_TOKEN>"
   backfill, or use the existing push-notification system
   (`PushToken` / `/news/api/push-tokens/`) for guaranteed delivery of
   breaking news.
+
+## Duplicate prevention
+
+Two layers prevent the same article being broadcast more than once to
+connected clients:
+
+1. **Signal guard** — `broadcast_new_article` in `signals.py` only fires
+   when an article newly becomes complete (`has_full_content` transitions to
+   `True`). Tag changes, minor field edits, and re-saves of already-complete
+   articles are filtered out before the broadcast logic runs.
+
+2. **Redis SETNX dedup key** — before sending, the signal atomically sets
+   `ws_broadcast:article:<pk>` in Redis (24-hour TTL) using `cache.add()`.
+   This is equivalent to `SETNX` — it returns `True` only once per article
+   PK, so even if two Celery workers race on the same article, only one wins
+   the broadcast right. If Redis is unavailable the guard fails open
+   (broadcasts anyway) so articles are never silently dropped.
+
+## Database duplicate management
+
+Duplicate articles in the database are prevented at the scraper level via
+`Article.find_existing()` (checks URL, canonical URL, external ID, content
+hash, and same-title within 30 days). Use the management command to audit
+and clean any duplicates that slipped through:
+
+```bash
+# Audit — see all duplicates, nothing deleted
+python manage.py deduplicate_articles
+
+# Full detail: which copy is kept, which are removed, and why
+python manage.py deduplicate_articles --verbose
+
+# Limit audit to one source
+python manage.py deduplicate_articles --source "Daily Monitor" --verbose
+
+# Delete all duplicates (always audit first)
+python manage.py deduplicate_articles --delete
+
+# Delete duplicates for one source only
+python manage.py deduplicate_articles --delete --source "NilePost"
+
+# Delete and clear Redis broadcast-dedup keys so kept copies can be
+# re-broadcast to currently connected WebSocket clients
+python manage.py deduplicate_articles --delete --clear-broadcast-cache
+```
+
+**Duplicate types detected:**
+
+| # | Type | Example |
+|---|------|---------|
+| 1 | Exact URL | Same URL saved twice in a scraper race condition |
+| 2 | Canonical URL | `http://` vs `https://`, `www.` prefix, UTM params |
+| 3 | `external_id + source` | Same post ID scraped twice from the same outlet |
+| 4 | Same title + source (30-day window) | Article re-posted with a new URL slug or re-dated |
+
+**Keeper selection** — when multiple copies exist the command keeps the one
+with `has_full_content=True` first, then highest `word_count`, then earliest
+`scraped_at`. The duplicates (lower-quality copies) are deleted.
