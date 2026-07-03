@@ -1,12 +1,14 @@
 import calendar
 import base64
 import json
+import logging
 from datetime import date, timedelta
 
+from django.db import transaction
 from django.db.models import Count, Q, Value
 from django.db.models.functions import Coalesce, NullIf
 from django.utils import timezone
-from rest_framework import generics
+from rest_framework import generics, status
 from rest_framework.exceptions import NotFound
 from rest_framework.pagination import PageNumberPagination
 from rest_framework.permissions import AllowAny, IsAdminUser
@@ -14,7 +16,9 @@ from rest_framework.response import Response
 from rest_framework.views import APIView
 
 from ..news_scrapping.models import Article
-from .models import DailyDigest, Entity, EntityMention, SourcePerspective, StoryAlert, StoryCluster
+from .models import ArticleEnrichment, DailyDigest, Entity, EntityMention, SourcePerspective, StoryAlert, StoryCluster
+
+logger = logging.getLogger(__name__)
 from .serializers import (
     ArticleSnippetSerializer,
     DailyDigestDetailSerializer,
@@ -232,6 +236,159 @@ class FeedInterleavesView(generics.GenericAPIView):
                 'payload': {'article_id': article.id},
             })
         return guides
+
+
+class ArticleSummaryView(APIView):
+    """
+    GET /intelligence/articles/<id>/summary/
+
+    Returns the AI summary for an article.
+
+    Fast path  — enrichment already completed: returns immediately from DB.
+    Slow path  — no enrichment yet: generates on the spot and returns the result.
+    In-flight  — another worker is currently generating: returns 202 so the
+                 client can retry after a short delay.
+    No content — article has no full text: returns the raw excerpt with a flag.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request, article_id):
+        article = Article.objects.select_related('source', 'category').filter(
+            id=article_id
+        ).first()
+        if not article:
+            raise NotFound('Article not found.')
+
+        # ── Fast path: already enriched ───────────────────────────────────────
+        try:
+            enrichment = ArticleEnrichment.objects.get(article=article)
+        except ArticleEnrichment.DoesNotExist:
+            enrichment = None
+
+        if enrichment and enrichment.status == 'completed':
+            return Response(_summary_payload(article, enrichment, generated_now=False))
+
+        # ── In-flight: another request/task is generating it ──────────────────
+        if enrichment and enrichment.status == 'processing':
+            return Response(
+                {
+                    'status': 'processing',
+                    'message': 'Summary is being generated. Retry in a few seconds.',
+                    'retry_after_seconds': 8,
+                    'article_id': article_id,
+                },
+                status=status.HTTP_202_ACCEPTED,
+            )
+
+        # ── No full content: return excerpt, skip generation ──────────────────
+        if not article.has_full_content:
+            return Response({
+                'status': 'excerpt_only',
+                'article_id': article_id,
+                'summary': article.excerpt or '',
+                'key_facts': [],
+                'themes': [],
+                'story_arcs': [],
+                'sentiment': None,
+                'sentiment_score': None,
+                'importance_score': None,
+                'local_impact': None,
+                'bias_notes': [],
+                'generated_now': False,
+                'cached': False,
+            })
+
+        # ── Slow path: claim and generate ─────────────────────────────────────
+        # Use update_or_create inside a transaction so concurrent requests don't
+        # both try to generate — only one wins the 'processing' status update.
+        with transaction.atomic():
+            enrichment, created = ArticleEnrichment.objects.select_for_update().get_or_create(
+                article=article,
+                defaults={'status': 'processing'},
+            )
+            if not created:
+                if enrichment.status == 'completed':
+                    # Another request just finished while we were waiting for the lock
+                    return Response(_summary_payload(article, enrichment, generated_now=False))
+                if enrichment.status == 'processing':
+                    return Response(
+                        {
+                            'status': 'processing',
+                            'message': 'Summary is being generated. Retry in a few seconds.',
+                            'retry_after_seconds': 8,
+                            'article_id': article_id,
+                        },
+                        status=status.HTTP_202_ACCEPTED,
+                    )
+                # pending / failed / skipped — claim it
+                enrichment.status = 'processing'
+                enrichment.save(update_fields=['status'])
+
+        # We hold the claim — generate synchronously
+        try:
+            from .agents import ArticleAnalysisAgent, EntityExtractionAgent
+            enrichment = ArticleAnalysisAgent().process(article)
+            EntityExtractionAgent().process(enrichment)
+            logger.info("On-demand summary generated for article %d", article_id)
+            return Response(_summary_payload(article, enrichment, generated_now=True))
+        except ValueError as exc:
+            # Content too short, bad LLM output, etc. — not retryable
+            return Response(
+                {'status': 'error', 'message': str(exc), 'article_id': article_id},
+                status=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            )
+        except Exception as exc:
+            logger.exception("On-demand summary failed for article %d: %s", article_id, exc)
+            return Response(
+                {
+                    'status': 'error',
+                    'message': 'Summary generation failed. Please try again shortly.',
+                    'article_id': article_id,
+                },
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
+
+
+def _summary_payload(article, enrichment: ArticleEnrichment, *, generated_now: bool) -> dict:
+    """Shared response shape for completed enrichments."""
+    local_impact = enrichment.local_impact or {}
+    return {
+        'status': 'completed',
+        'article_id': article.id,
+        'title': article.title,
+        'source': article.source.name if article.source else None,
+        'published_at': article.published_at,
+
+        'summary': enrichment.summary,
+        'key_facts': enrichment.key_facts or [],
+        'themes': enrichment.themes or [],
+        'story_arcs': enrichment.related_themes or [],
+
+        'sentiment': enrichment.sentiment,
+        'sentiment_score': enrichment.sentiment_score,
+        'importance_score': enrichment.importance_score,
+
+        'local_impact': {
+            'regions': local_impact.get('regions', []),
+            'affected_groups': local_impact.get('affected_groups', []),
+            'time_horizon': local_impact.get('time_horizon'),
+            'impact_note': local_impact.get('impact_note', ''),
+        } if local_impact else None,
+
+        'bias_notes': enrichment.bias_or_framing_notes or [],
+        'follow_up_worthy': enrichment.follow_up_worthy,
+        'controversy_flag': enrichment.controversy_flag,
+
+        'entities': {
+            'people': enrichment.entities_people or [],
+            'organizations': enrichment.entities_organizations or [],
+            'locations': enrichment.entities_locations or [],
+        },
+
+        'generated_now': generated_now,
+        'cached': not generated_now,
+        'analyzed_at': enrichment.analyzed_at,
+    }
 
 
 class ArticleGuidanceView(generics.GenericAPIView):

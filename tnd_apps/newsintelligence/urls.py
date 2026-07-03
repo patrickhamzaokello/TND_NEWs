@@ -1,19 +1,20 @@
 # urls.py
 from django.urls import path
 from .views import (
+    ArticleGuidanceView,
+    ArticleSummaryView,
     DailyDigestByDateView,
     DailyDigestDetailView,
     DailyDigestListView,
     DigestApproveView,
     DigestRejectView,
-    ArticleGuidanceView,
+    EntityMentionCalendarView,
+    EntityTopArticlesView,
     FeedInterleavesView,
     StoryAlertListView,
     StoryClusterDetailView,
     StoryClusterListView,
     TodayDigestView,
-    EntityTopArticlesView,
-    EntityMentionCalendarView,
     TopEntitiesWithArticlesView,
     TrendingEntitiesView,
 )
@@ -22,6 +23,7 @@ app_name = 'digests'  # optional
 
 urlpatterns = [
     path('feed/interleaves/', FeedInterleavesView.as_view(), name='feed-interleaves'),
+    path('articles/<int:article_id>/summary/', ArticleSummaryView.as_view(), name='article-summary'),
     path('articles/<int:article_id>/guidance/', ArticleGuidanceView.as_view(), name='article-guidance'),
     path('digests/', DailyDigestListView.as_view(), name='digest-list'),
     path('digests/today/', TodayDigestView.as_view(), name='digest-today'),
