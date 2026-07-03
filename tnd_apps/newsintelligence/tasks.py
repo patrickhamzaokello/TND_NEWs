@@ -89,12 +89,23 @@ def retry_failed_enrichments(self):
     max_retries=2,
     name='newsintelligence.tasks.generate_daily_digest',
 )
-def generate_daily_digest(self, target_date_str: str = None, force_refresh: bool = True):
+def generate_daily_digest(
+    self,
+    target_date_str: str = None,
+    force_refresh: bool = True,
+    slot: str = '',
+):
     """
-    Daily task: enrich pending full-content articles, then generate today's
-    intelligence digest unless a date is supplied for backfill.
-    Scheduled current-day runs refresh the published digest as new stories arrive.
-    Optionally pass target_date_str='2026-02-14' to backfill.
+    Generate today's intelligence digest (or backfill a past date).
+
+    Runs 4× a day at 08:30, 12:30, 18:30, 21:30 EAT.  Each run:
+      1. Top-up enrichment — small batch (10) for any articles scraped in the
+         last 2 hours that the hourly task may not have reached yet.  The
+         hourly enrich_new_articles task (batch=50) handles the main backlog;
+         we only catch the gap between that last run and now.
+      2. Regenerate today's digest from all completed enrichments.
+
+    Pass target_date_str='YYYY-MM-DD' to backfill a past date (skips top-up).
     """
     target_date = None
     if target_date_str:
@@ -105,20 +116,32 @@ def generate_daily_digest(self, target_date_str: str = None, force_refresh: bool
             logger.error("Invalid date format %r — expected YYYY-MM-DD", target_date_str)
             return {'error': f"Invalid date format: {target_date_str!r}. Expected YYYY-MM-DD."}
 
-    logger.info("[Task] generate_daily_digest | date=%s", target_date or timezone.localdate())
+    label = f"[slot={slot}]" if slot else ''
+    logger.info("[Task] generate_daily_digest %s | date=%s", label, target_date or timezone.localdate())
+
     try:
-        service = EnrichmentService(batch_size=50)
-        enrichment_run = service.run_enrichment()
-        logger.info(
-            "[Task] pre-digest enrichment complete | processed=%d failed=%d",
-            enrichment_run.articles_processed,
-            enrichment_run.articles_failed,
-        )
+        # Top-up enrichment — only for scheduled (non-backfill) runs.
+        # Small batch so the digest task stays fast; the hourly enrichment
+        # task covers the full backlog independently.
+        if target_date is None:
+            service = EnrichmentService(batch_size=10)
+            enrichment_run = service.run_enrichment()
+            logger.info(
+                "[Task] pre-digest top-up %s | processed=%d failed=%d",
+                label,
+                enrichment_run.articles_processed,
+                enrichment_run.articles_failed,
+            )
+        else:
+            service = EnrichmentService()
+
         refresh_existing = force_refresh and target_date is None
         result = service.run_daily_digest(target_date, force_refresh=refresh_existing)
+        result['slot'] = slot
         return result
+
     except Exception as exc:
-        logger.exception("generate_daily_digest failed: %s", exc)
+        logger.exception("generate_daily_digest %s failed: %s", label, exc)
         raise self.retry(exc=exc)
 
 

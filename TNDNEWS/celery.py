@@ -48,9 +48,32 @@ celery_app.conf.beat_schedule = {
         'task': 'newsintelligence.tasks.retry_failed_enrichments',
         'schedule': crontab(minute=0, hour='*/6'),
     },
-    'generate-daily-digest': {
+    # Digest runs 4× a day, always 30 min after the :15 enrichment cycle so
+    # freshly scraped articles are already processed before synthesis begins.
+    # Times in EAT (UTC+3):
+    #   05:30 UTC = 08:30 EAT — morning briefing (overnight + early papers)
+    #   09:30 UTC = 12:30 EAT — midday update  (morning news cycle)
+    #   15:30 UTC = 18:30 EAT — evening wrap-up (afternoon news cycle)
+    #   18:30 UTC = 21:30 EAT — night update    (prime-time TV stories online)
+    'generate-daily-digest-morning': {
         'task': 'newsintelligence.tasks.generate_daily_digest',
-        'schedule': crontab(minute=0, hour='3,9,15'),
+        'schedule': crontab(minute=30, hour=5),
+        'kwargs': {'slot': 'morning'},
+    },
+    'generate-daily-digest-midday': {
+        'task': 'newsintelligence.tasks.generate_daily_digest',
+        'schedule': crontab(minute=30, hour=9),
+        'kwargs': {'slot': 'midday'},
+    },
+    'generate-daily-digest-evening': {
+        'task': 'newsintelligence.tasks.generate_daily_digest',
+        'schedule': crontab(minute=30, hour=15),
+        'kwargs': {'slot': 'evening'},
+    },
+    'generate-daily-digest-night': {
+        'task': 'newsintelligence.tasks.generate_daily_digest',
+        'schedule': crontab(minute=30, hour=18),
+        'kwargs': {'slot': 'night'},
     },
     'build-story-clusters-hourly': {
         'task': 'newsintelligence.tasks.build_story_clusters',
