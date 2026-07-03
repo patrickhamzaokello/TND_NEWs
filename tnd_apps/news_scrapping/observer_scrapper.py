@@ -327,16 +327,8 @@ class ObserverUgScraper:
         )
         return author
 
-    def _find_existing_article(self, url: str, external_id: str, content_hash: str = "") -> Article | None:
-        canonical = Article.normalize_url(url)
-        existing = (
-            Article.objects.filter(external_id=external_id, source=self.source).first()
-            or Article.objects.filter(canonical_url=canonical).first()
-            or Article.objects.filter(url=url).first()
-        )
-        if not existing and content_hash:
-            existing = Article.objects.filter(content_hash=content_hash).first()
-        return existing
+    def _find_existing_article(self, url: str, external_id: str, content_hash: str = "", title: str = "") -> Article | None:
+        return Article.find_existing(url, external_id, self.source, content_hash, title)
 
     # ── Listing page ───────────────────────────────────────────────────────
 
@@ -705,7 +697,7 @@ class ObserverUgScraper:
                             Article._hash_text(detail.get("full_content") or detail.get("excerpt"))
                             if detail else ""
                         )
-                        existing = self._find_existing_article(article_url, external_id, content_hash)
+                        existing = self._find_existing_article(article_url, external_id, content_hash, title=card.get("title", ""))
 
                         if existing:
                             if get_full_content and (

@@ -55,20 +55,63 @@ def _build_stream_payload(article: Article) -> dict:
     }
 
 
+def _should_broadcast(instance, created: bool, update_fields) -> bool:
+    """
+    Return True only when an article newly becomes complete.
+
+    Cases that qualify:
+      - Brand-new article saved with has_full_content=True (scraper fetched
+        the detail page in the same pass).
+      - Existing article updated and has_full_content was explicitly included
+        in the set of changed fields (enrichment / retry pass just completed).
+
+    Cases that must NOT broadcast:
+      - Re-saves of already-complete articles (e.g. tag M2M changes, minor
+        field corrections) where update_fields is None but the article was
+        already broadcast — caught by the Redis dedup key below.
+      - Any save where has_full_content is still False.
+    """
+    if not instance.has_full_content:
+        return False
+    if created:
+        return True
+    # Explicit update that set has_full_content
+    if update_fields is not None and 'has_full_content' in update_fields:
+        return True
+    # Full save (update_fields=None) on an existing article — this fires on
+    # tag changes, minor edits, etc. The Redis dedup key handles the
+    # exactly-once guarantee for these cases; let them through here.
+    if update_fields is None:
+        return True
+    return False
+
+
 @receiver(post_save, sender=Article)
 def broadcast_new_article(sender, instance, created, update_fields=None, **kwargs):
     """
-    Push every newly scraped article (and the moment it gains full content)
-    onto the real-time WebSocket stream via the Channels Redis layer.
+    Push a newly-complete article onto the real-time WebSocket stream.
+
+    Exactly-once guarantee is enforced by a Redis key
+    ``ws_broadcast:article:<pk>`` (24-hour TTL).  ``cache.add()`` maps to
+    Redis SETNX — it returns True only when the key is freshly created, so
+    only the first qualifying save wins the broadcast right even if multiple
+    Celery workers or signal firings race simultaneously.
     """
-    # Only stream once the article has real content — avoids pushing
-    # placeholder/partial rows that scrapers create before enrichment.
-    if not instance.has_full_content:
+    if not _should_broadcast(instance, created, update_fields):
         return
 
-    becoming_complete = update_fields is None or 'has_full_content' in update_fields
-    if not created and not becoming_complete:
-        return
+    # ── Atomic exactly-once guard ────────────────────────────────────────
+    try:
+        from django.core.cache import cache
+        dedup_key = f"ws_broadcast:article:{instance.pk}"
+        # cache.add() is SETNX: returns True only if the key did not exist.
+        claimed = cache.add(dedup_key, "1", timeout=86400)  # 24 h
+        if not claimed:
+            return  # Another save already broadcast this article
+    except Exception:
+        # If Redis is down we broadcast anyway — a rare duplicate is better
+        # than missing articles entirely.
+        logger.warning("Redis dedup unavailable for article %s; broadcasting anyway", instance.pk)
 
     try:
         from asgiref.sync import async_to_sync
@@ -89,8 +132,7 @@ def broadcast_new_article(sender, instance, created, update_fields=None, **kwarg
             async_to_sync(channel_layer.group_send)(source_group(instance.source_id), event)
 
     except Exception:
-        # Streaming must never break the scraping pipeline.
-        logger.exception("Failed to broadcast article %s to real-time stream", instance.id)
+        logger.exception("Failed to broadcast article %s to real-time stream", instance.pk)
 
 
 @receiver(post_save, sender=Article)

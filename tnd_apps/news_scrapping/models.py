@@ -6,6 +6,7 @@ from django.core.exceptions import ValidationError
 import uuid
 import hashlib
 import re
+from datetime import timedelta
 from dateutil import parser
 from django.conf import settings
 from urllib.parse import parse_qsl, urlencode, urlsplit, urlunsplit
@@ -214,6 +215,54 @@ class Article(models.Model):
             self.published_at = self.scraped_at or timezone.now()
             
         super().save(*args, **kwargs)
+
+    @classmethod
+    def find_existing(
+        cls,
+        url: str,
+        external_id: str,
+        source,
+        content_hash: str = "",
+        title: str = "",
+    ) -> "Article | None":
+        """
+        Single authoritative duplicate-check used by all scrapers.
+
+        Lookup order (most to least specific):
+          1. external_id + source  — same post from same outlet
+          2. canonical_url         — URL normalised (strips UTM, www., trailing slash)
+          3. url exact             — raw URL fallback
+          4. content_hash          — identical body text, any source
+          5. normalized_title_hash (same source, last 30 days) — catches re-posted
+             or re-dated articles with the same headline from the same outlet
+        """
+        canonical = cls.normalize_url(url)
+
+        existing = (
+            cls.objects.filter(external_id=external_id, source=source).first()
+            or cls.objects.filter(canonical_url=canonical).first()
+            or cls.objects.filter(url=url).first()
+        )
+        if existing:
+            return existing
+
+        if content_hash:
+            existing = cls.objects.filter(content_hash=content_hash).first()
+            if existing:
+                return existing
+
+        if title:
+            title_hash = cls._hash_text(cls.normalize_title(title))
+            cutoff = timezone.now() - timedelta(days=30)
+            existing = cls.objects.filter(
+                normalized_title_hash=title_hash,
+                source=source,
+                scraped_at__gte=cutoff,
+            ).first()
+            if existing:
+                return existing
+
+        return None
 
     def was_sent_to_user(self, user, days=7):
         '''Check if this article was already sent to user in the last N days'''

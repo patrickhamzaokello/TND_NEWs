@@ -477,16 +477,8 @@ class NilePostScraper:
             "has_full_content": word_count >= self.MIN_FULL_CONTENT_WORDS,
         }
 
-    def _find_existing_article(self, article_url: str, external_id: str, content_hash: str = "") -> Article | None:
-        canonical_url = Article.normalize_url(article_url)
-        existing = (
-            Article.objects.filter(external_id=external_id, source=self.source).first()
-            or Article.objects.filter(canonical_url=canonical_url).first()
-            or Article.objects.filter(url=article_url).first()
-        )
-        if not existing and content_hash:
-            existing = Article.objects.filter(content_hash=content_hash).first()
-        return existing
+    def _find_existing_article(self, article_url: str, external_id: str, content_hash: str = "", title: str = "") -> Article | None:
+        return Article.find_existing(article_url, external_id, self.source, content_hash, title)
 
     def _apply_detail(self, article: Article, detail: dict | None) -> None:
         if not detail:
@@ -552,7 +544,7 @@ class NilePostScraper:
                         external_id = self._external_id_from_url(article_url)
                         detail = self._scrape_article_detail(article_url, run) if get_full_content else None
                         content_hash = Article._hash_text(detail.get("full_content") or detail.get("excerpt")) if detail else ""
-                        existing = self._find_existing_article(article_url, external_id, content_hash)
+                        existing = self._find_existing_article(article_url, external_id, content_hash, title=card.get("title", ""))
 
                         if existing:
                             if get_full_content and (not existing.has_full_content or detail and detail.get("has_full_content")):

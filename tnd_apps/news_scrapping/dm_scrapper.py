@@ -397,16 +397,13 @@ class MonitorNewsDjangoScraper:
     def _find_existing_article(self, article_data):
         url = article_data["url"]
         external_id = article_data.get("external_id") or self._external_id_from_url(url)
-        canonical_url = Article.normalize_url(url)
-        content_hash = article_data.get("content_hash", "")
-        existing = (
-            Article.objects.filter(external_id=external_id, source=self.source).first()
-            or Article.objects.filter(canonical_url=canonical_url).first()
-            or Article.objects.filter(url=url).first()
+        return Article.find_existing(
+            url,
+            external_id,
+            self.source,
+            content_hash=article_data.get("content_hash", ""),
+            title=article_data.get("title", ""),
         )
-        if not existing and content_hash:
-            existing = Article.objects.filter(content_hash=content_hash).first()
-        return existing
 
     def _apply_detail(self, article, detail):
         if not detail:
