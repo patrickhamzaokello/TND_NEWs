@@ -1,11 +1,33 @@
 # signals.py
 import logging
 
+from django.contrib.postgres.search import SearchVector
 from django.db.models.signals import post_save
 from django.dispatch import receiver
 from .models import Article
 
 logger = logging.getLogger(__name__)
+
+
+@receiver(post_save, sender=Article)
+def update_search_vector(sender, instance, **kwargs):
+    """
+    Keep search_vector in sync every time an article is saved.
+    Uses update() on a single-row queryset to avoid triggering post_save again.
+    Only runs when the article has content worth indexing.
+    """
+    if not (instance.title or instance.excerpt or instance.content):
+        return
+    try:
+        Article.objects.filter(pk=instance.pk).update(
+            search_vector=(
+                SearchVector('title', weight='A') +
+                SearchVector('excerpt', weight='B') +
+                SearchVector('content', weight='C')
+            )
+        )
+    except Exception:
+        logger.exception("Failed to update search_vector for article %s", instance.pk)
 
 
 def _build_stream_payload(article: Article) -> dict:

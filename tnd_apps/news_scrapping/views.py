@@ -8,7 +8,7 @@ from django.db.models.functions import Greatest
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
-from django.contrib.postgres.search import SearchQuery, SearchRank
+from django.contrib.postgres.search import SearchQuery, SearchRank, SearchVector
 from .models import NewsSource, Article, UserProfile, ArticleView, Comment, PushToken, Category, Tag, UserNotification, ScrapingRun
 from .serializers import NewsSourceSerializer, ArticleSerializer, ArticleListSerializer, ArticleReadNextSerializer, ArticleViewSerializer, UserProfileSerializer, \
     CommentSerializer, CategorySerializer, TagSerializer, NotificationStatsSerializer, UserNotificationSerializer, SourceHealthSerializer
@@ -554,51 +554,78 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     def _apply_search_query(self, queryset, query):
         """
-        Apply search query using multiple strategies for better results.
-        This uses both PostgreSQL full-text search and Django Q objects for compatibility.
-        """
+        Multi-strategy search: FTS → phrase match → all-terms AND → any-term OR.
 
-        # Clean and prepare search terms
+        The strategies run in order and stop at the first one that returns results,
+        so the most precise match wins. This prevents the common case where FTS
+        returns 0 (e.g. search_vector not yet populated for a new article, or an
+        apostrophe breaks the lexer) from silently hiding articles that a simple
+        icontains would find immediately.
+        """
         search_terms = self._prepare_search_terms(query)
 
-        # Try PostgreSQL full-text search if available
+        # ── Strategy 1: PostgreSQL full-text search (fast, ranked) ──────────
+        # Uses 'websearch' mode which handles apostrophes, quoted phrases, and
+        # treats the input like a search-engine query rather than requiring all
+        # terms to match as-is.  Falls through on exception OR empty result.
         try:
-            # Full-text search with ranking
-            search_query = SearchQuery(query)
-
-            queryset = queryset.annotate(
-                rank=SearchRank(F('search_vector'), search_query)
-            ).filter(search_vector=search_query)
-
-            return queryset
-
+            fts_query = SearchQuery(query, search_type='websearch')
+            fts_qs = queryset.annotate(
+                rank=SearchRank(F('search_vector'), fts_query)
+            ).filter(search_vector=fts_query)
+            if fts_qs.exists():
+                return fts_qs
         except Exception:
-            # Fallback to basic search using Q objects
-            return self._basic_search(queryset, search_terms)
+            pass
 
-    def _basic_search(self, queryset, search_terms):
-        """Fallback search method using Django Q objects."""
-        search_q = Q()
+        # ── Strategy 2: exact phrase in title or excerpt ─────────────────────
+        # Catches "suggested but not found" cases — the suggestion endpoint uses
+        # title__icontains so any suggestion must be findable this way.
+        phrase_qs = queryset.filter(
+            Q(title__icontains=query) | Q(excerpt__icontains=query)
+        )
+        if phrase_qs.exists():
+            return phrase_qs
 
-        for term in search_terms:
-            term_q = (
+        # ── Strategy 3: all significant words must appear somewhere ──────────
+        # Tighter than the OR fallback — every keyword must be present in at
+        # least one of the searchable fields.
+        if search_terms:
+            and_q = Q()
+            for term in search_terms:
+                and_q &= (
                     Q(title__icontains=term) |
                     Q(excerpt__icontains=term) |
-                    Q(content__icontains=term) |
-                    Q(source__name__icontains=term) |
-                    Q(category__name__icontains=term) |
-                    Q(tags__name__icontains=term)
-            )
-            search_q |= term_q
+                    Q(content__icontains=term)
+                )
+            and_qs = queryset.filter(and_q).distinct()
+            if and_qs.exists():
+                return and_qs
 
+        # ── Strategy 4: any-term OR fallback (broadest net) ─────────────────
+        return self._basic_search(queryset, search_terms)
+
+    def _basic_search(self, queryset, search_terms):
+        """Broadest fallback — any single keyword matching in any field."""
+        if not search_terms:
+            return queryset.none()
+
+        search_q = Q()
+        for term in search_terms:
+            search_q |= (
+                Q(title__icontains=term) |
+                Q(excerpt__icontains=term) |
+                Q(content__icontains=term) |
+                Q(source__name__icontains=term) |
+                Q(category__name__icontains=term) |
+                Q(tags__name__icontains=term)
+            )
         return queryset.filter(search_q).distinct()
 
     def _prepare_search_terms(self, query):
-        """Clean and prepare search terms."""
-        # Remove special characters and split into terms
+        """Split query into significant individual words (3+ chars, no punctuation)."""
         clean_query = re.sub(r'[^\w\s]', ' ', query)
-        terms = [term.strip() for term in clean_query.split() if len(term.strip()) > 2]
-        return terms
+        return [t for t in clean_query.split() if len(t) >= 3]
 
     def _apply_search_sorting(self, queryset, sort_by, query):
         """Apply sorting to search results."""
