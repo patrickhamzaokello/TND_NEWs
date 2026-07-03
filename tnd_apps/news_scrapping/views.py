@@ -1,4 +1,5 @@
 # Create your views here.
+from tnd_apps.cache_utils import CacheKey, TTL, cached_response
 from rest_framework import serializers, viewsets, status, generics, status, views
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -671,36 +672,29 @@ class ArticleViewSet(viewsets.ModelViewSet):
         if len(query) < 2:
             return Response({'suggestions': []})
 
-        suggestions = []
+        cache_key = CacheKey.search_suggestions(query, limit)
 
-        # Prioritize recent articles (last 7 days)
-        recent_threshold = timezone.now() - timedelta(days=7)
+        def _build():
+            recent_threshold = timezone.now() - timedelta(days=7)
+            title_suggestions = Article.objects.filter(
+                title__icontains=query,
+                scraped_at__gte=recent_threshold,
+                has_full_content=True,
+            ).order_by('-scraped_at').values_list('title', flat=True).distinct()[:limit // 2]
+            category_suggestions = Category.objects.filter(
+                name__icontains=query
+            ).values_list('name', flat=True).distinct()[:limit // 4]
+            source_suggestions = NewsSource.objects.filter(
+                name__icontains=query, is_active=True
+            ).values_list('name', flat=True).distinct()[:limit // 4]
+            suggestions = (
+                list(title_suggestions) +
+                list(category_suggestions) +
+                list(source_suggestions)
+            )
+            return {'suggestions': suggestions[:limit]}
 
-        # Get suggestions from recent article titles
-        title_suggestions = Article.objects.filter(
-            title__icontains=query,
-            scraped_at__gte=recent_threshold,
-            has_full_content=True,
-        ).order_by('-scraped_at').values_list('title', flat=True).distinct()[:limit // 2]
-
-        # Get suggestions from categories
-        category_suggestions = Category.objects.filter(
-            name__icontains=query
-        ).values_list('name', flat=True).distinct()[:limit // 4]
-
-        # Get suggestions from active sources
-        source_suggestions = NewsSource.objects.filter(
-            name__icontains=query,
-            is_active=True
-        ).values_list('name', flat=True).distinct()[:limit // 4]
-
-        suggestions.extend(list(title_suggestions))
-        suggestions.extend(list(category_suggestions))
-        suggestions.extend(list(source_suggestions))
-
-        return Response({
-            'suggestions': suggestions[:limit]
-        })
+        return Response(cached_response(cache_key, TTL.SEARCH_SUGGESTIONS, _build))
 
     @action(detail=False, methods=['get'])
     def top_story(self, request):
@@ -710,12 +704,13 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
         GET /api/articles/top_story/
         """
-        top_story = self._get_intelligence_top_story()
-        if top_story:
-            serializer = self.get_serializer([top_story], many=True)
-            return Response(serializer.data)
+        def _build():
+            article = self._get_intelligence_top_story()
+            if article:
+                return self.get_serializer([article], many=True).data
+            return []
 
-        return Response([])
+        return Response(cached_response(CacheKey.TOP_STORY, TTL.TOP_STORY, _build))
 
     @action(detail=False, methods=['get'])
     def featured(self, request):
@@ -726,26 +721,27 @@ class ArticleViewSet(viewsets.ModelViewSet):
         GET /api/articles/featured/?exclude_top_story=true&exclude_ids=1,2,3
         """
         excluded_ids = self._get_excluded_article_ids(request)
-        time_threshold = timezone.now() - timedelta(hours=72)
 
-        queryset = self._get_intelligence_article_queryset().exclude(
-            id__in=excluded_ids
-        )
-
-        recent_queryset = queryset.filter(scraped_at__gte=time_threshold).order_by(
-            *self._get_intelligence_ordering()
-        )
-        featured_articles = list(recent_queryset[:5])
-
-        if len(featured_articles) < 5:
-            existing_ids = [article.id for article in featured_articles]
-            fallback_queryset = queryset.exclude(id__in=existing_ids).order_by(
-                *self._get_intelligence_ordering()
+        def _build():
+            time_threshold = timezone.now() - timedelta(hours=72)
+            qs = self._get_intelligence_article_queryset().exclude(id__in=excluded_ids)
+            articles = list(
+                qs.filter(scraped_at__gte=time_threshold).order_by(
+                    *self._get_intelligence_ordering()
+                )[:5]
             )
-            featured_articles.extend(list(fallback_queryset[:5 - len(featured_articles)]))
+            if len(articles) < 5:
+                seen = {a.id for a in articles}
+                articles += list(
+                    qs.exclude(id__in=seen).order_by(*self._get_intelligence_ordering()
+                    )[:5 - len(articles)]
+                )
+            return self.get_serializer(articles, many=True).data
 
-        serializer = self.get_serializer(featured_articles, many=True)
-        return Response(serializer.data)
+        # Cache only when no custom exclusions so all clients share the result
+        if excluded_ids:
+            return Response(_build())
+        return Response(cached_response(CacheKey.FEATURED, TTL.FEATURED, _build))
 
     @action(detail=False, methods=['get'])
     def top_reads(self, request):
@@ -756,31 +752,29 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
         GET /api/articles/top_reads/?days=7&exclude_top_story=true
         """
-        # Get excluded IDs
         excluded_ids = self._get_excluded_article_ids(request)
-
-        # Get time window (default 7 days)
         days = int(request.query_params.get('days', 7))
-        time_threshold = timezone.now() - timedelta(days=days)
 
-        queryset = self.get_queryset().filter(
-            scraped_at__gte=time_threshold
-        ).exclude(id__in=excluded_ids)
+        def _build():
+            time_threshold = timezone.now() - timedelta(days=days)
+            qs = self.get_queryset().filter(
+                scraped_at__gte=time_threshold
+            ).exclude(id__in=excluded_ids)
+            qs = self._calculate_article_score(
+                qs,
+                recency_weight=0.2,
+                engagement_weight=0.6,
+                quality_weight=0.2,
+                time_window_hours=days * 24,
+            )
+            return self.get_serializer(
+                qs.order_by('-engagement_score', '-article_score', *self.feed_ordering)[:10],
+                many=True,
+            ).data
 
-        # Calculate score with higher engagement weight
-        queryset = self._calculate_article_score(
-            queryset,
-            recency_weight=0.2,
-            engagement_weight=0.6,  # Emphasize engagement for "top reads"
-            quality_weight=0.2,
-            time_window_hours=days * 24
-        )
-
-        # Order by engagement score primarily
-        queryset = queryset.order_by('-engagement_score', '-article_score', *self.feed_ordering)[:10]
-
-        serializer = self.get_serializer(queryset, many=True)
-        return Response(serializer.data)
+        if excluded_ids:
+            return Response(_build())
+        return Response(cached_response(CacheKey.top_reads(days), TTL.TOP_READS, _build))
 
     @action(detail=False, methods=['get'])
     def latest(self, request):

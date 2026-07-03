@@ -87,6 +87,18 @@ def _should_broadcast(instance, created: bool, update_fields) -> bool:
 
 
 @receiver(post_save, sender=Article)
+def invalidate_article_caches(sender, instance, created, update_fields=None, **kwargs):
+    """Clear Redis caches when an article is published or its content changes."""
+    if not instance.has_full_content:
+        return
+    try:
+        from tnd_apps.cache_utils import on_article_published
+        on_article_published(instance.pk)
+    except Exception:
+        logger.warning("Cache invalidation failed for article %s", instance.pk)
+
+
+@receiver(post_save, sender=Article)
 def broadcast_new_article(sender, instance, created, update_fields=None, **kwargs):
     """
     Push a newly-complete article onto the real-time WebSocket stream.

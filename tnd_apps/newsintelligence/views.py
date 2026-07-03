@@ -15,6 +15,7 @@ from rest_framework.permissions import AllowAny, IsAdminUser
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from tnd_apps.cache_utils import CacheKey, TTL, cached_response
 from ..news_scrapping.models import Article
 from .models import ArticleEnrichment, DailyDigest, Entity, EntityMention, SourcePerspective, StoryAlert, StoryCluster
 
@@ -395,41 +396,47 @@ class ArticleGuidanceView(generics.GenericAPIView):
     permission_classes = [AllowAny]
 
     def get(self, request, article_id):
-        article = Article.objects.select_related(
-            'source',
-            'category',
-            'author',
-            'enrichment',
-        ).filter(id=article_id, has_full_content=True).first()
-        if not article:
+        cache_key = CacheKey.article_guidance(article_id)
+
+        def _build():
+            article = Article.objects.select_related(
+                'source', 'category', 'author', 'enrichment',
+            ).filter(id=article_id, has_full_content=True).first()
+            if not article:
+                return None
+
+            enrichment = getattr(article, 'enrichment', None)
+            cluster = StoryCluster.objects.filter(
+                cluster_articles__article=article
+            ).annotate(
+                article_count=Count('cluster_articles', distinct=True),
+                source_count=Count('cluster_articles__article__source', distinct=True),
+            ).order_by('-importance_score', '-last_seen_at').first()
+
+            key_entities = []
+            if enrichment:
+                key_entities = list(
+                    EntityMention.objects.filter(enrichment=enrichment)
+                    .values('entity_name', 'normalized_name', 'entity_type')
+                    .order_by('entity_type', 'entity_name')[:12]
+                )
+
+            suggested = self._suggested_next_reads(article, cluster, enrichment)
+            return {
+                'article': ArticleSnippetSerializer(article).data,
+                'related_cluster': self._cluster_payload(cluster),
+                'key_entities': key_entities,
+                'story_arcs': (enrichment.related_themes or []) if enrichment else [],
+                'key_facts': (enrichment.key_facts or []) if enrichment else [],
+                'why_it_matters': self._why_it_matters(article, enrichment, cluster),
+                'missing_context': self._missing_context(article, enrichment, cluster),
+                'suggested_next_reads': ArticleSnippetSerializer(suggested, many=True).data,
+            }
+
+        data = cached_response(cache_key, TTL.ARTICLE_GUIDANCE, _build)
+        if data is None:
             raise NotFound('Article not found.')
-
-        enrichment = getattr(article, 'enrichment', None)
-        cluster = StoryCluster.objects.filter(cluster_articles__article=article).annotate(
-            article_count=Count('cluster_articles', distinct=True),
-            source_count=Count('cluster_articles__article__source', distinct=True),
-        ).order_by('-importance_score', '-last_seen_at').first()
-
-        key_entities = []
-        if enrichment:
-            key_entities = list(
-                EntityMention.objects.filter(enrichment=enrichment)
-                .values('entity_name', 'normalized_name', 'entity_type')
-                .order_by('entity_type', 'entity_name')[:12]
-            )
-
-        suggested = self._suggested_next_reads(article, cluster, enrichment)
-
-        return Response({
-            'article': ArticleSnippetSerializer(article).data,
-            'related_cluster': self._cluster_payload(cluster),
-            'key_entities': key_entities,
-            'story_arcs': (enrichment.related_themes or []) if enrichment else [],
-            'key_facts': (enrichment.key_facts or []) if enrichment else [],
-            'why_it_matters': self._why_it_matters(article, enrichment, cluster),
-            'missing_context': self._missing_context(article, enrichment, cluster),
-            'suggested_next_reads': ArticleSnippetSerializer(suggested, many=True).data,
-        })
+        return Response(data)
 
     def _cluster_payload(self, cluster):
         if not cluster:
@@ -565,6 +572,12 @@ class TodayDigestView(DailyDigestDetailView):
         self.check_object_permissions(self.request, obj)
         return obj
 
+    def retrieve(self, request, *args, **kwargs):
+        def _build():
+            instance = self.get_object()
+            return self.get_serializer(instance).data
+        return Response(cached_response(CacheKey.DIGEST_TODAY, TTL.DIGEST_TODAY, _build))
+
 
 class DailyDigestByDateView(DailyDigestDetailView):
     lookup_field = 'digest_date'
@@ -598,6 +611,21 @@ class StoryClusterListView(generics.ListAPIView):
             qs = qs.filter(primary_theme=theme)
         return qs
 
+    def list(self, request, *args, **kwargs):
+        page = int(request.query_params.get('page', 1))
+        page_size = int(request.query_params.get('page_size', self.pagination_class.page_size))
+        status_param = request.query_params.get('status', '')
+        theme_param = request.query_params.get('theme', '')
+        cache_key = CacheKey.cluster_list_page(page, page_size, status_param, theme_param)
+
+        def _build():
+            qs = self.filter_queryset(self.get_queryset())
+            page_obj = self.paginate_queryset(qs)
+            serializer = self.get_serializer(page_obj, many=True)
+            return self.get_paginated_response(serializer.data).data
+
+        return Response(cached_response(cache_key, TTL.CLUSTER_LIST, _build))
+
 
 class StoryClusterDetailView(generics.RetrieveAPIView):
     serializer_class = StoryClusterDetailSerializer
@@ -625,23 +653,34 @@ class StoryClusterDetailView(generics.RetrieveAPIView):
             'source_perspectives__article',
         )
 
+    def retrieve(self, request, *args, **kwargs):
+        slug = kwargs.get('slug', '')
+        cache_key = CacheKey.cluster_detail(slug)
+
+        def _build():
+            instance = self.get_object()
+            return self.get_serializer(instance).data
+
+        return Response(cached_response(cache_key, TTL.CLUSTER_DETAIL, _build))
+
 
 class TrendingEntitiesView(generics.GenericAPIView):
     permission_classes = [AllowAny]
 
     def get(self, request):
         window_days = int(request.query_params.get('window_days', 7))
-        since = timezone.now().date() - timedelta(days=window_days)
-        rows = EntityMention.objects.filter(
-            mention_date__gte=since
-        ).values('normalized_name', 'entity_name', 'entity_type').annotate(
-            mention_count=Count('id')
-        ).order_by('-mention_count')[:50]
+        cache_key = CacheKey.trending_entities(window_days)
 
-        return Response({
-            'window_days': window_days,
-            'results': list(rows),
-        })
+        def _build():
+            since = timezone.now().date() - timedelta(days=window_days)
+            rows = EntityMention.objects.filter(
+                mention_date__gte=since
+            ).values('normalized_name', 'entity_name', 'entity_type').annotate(
+                mention_count=Count('id')
+            ).order_by('-mention_count')[:50]
+            return {'window_days': window_days, 'results': list(rows)}
+
+        return Response(cached_response(cache_key, TTL.TRENDING_ENTITIES, _build))
 
 
 class EntityMentionCalendarView(generics.GenericAPIView):

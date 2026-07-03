@@ -66,6 +66,11 @@ class ArticleAnalysisAgent:
             result = self._call_llm(article)
             self._save_enrichment(enrichment, result)
             logger.info("✓ Enriched article %d: %s", article.id, article.title[:60])
+            try:
+                from tnd_apps.cache_utils import on_enrichment_completed
+                on_enrichment_completed(article.id)
+            except Exception:
+                pass
             return enrichment
 
         except ValueError as e:
@@ -382,3 +387,8 @@ class DailyDigestAgent:
             digest.is_published = digest.editorial_review_status == 'approved'
 
         digest.save()
+        try:
+            from tnd_apps.cache_utils import on_digest_published
+            on_digest_published()
+        except Exception:
+            pass

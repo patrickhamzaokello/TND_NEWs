@@ -149,6 +149,11 @@ def generate_daily_digest(
 def build_story_clusters(days: int = 7):
     from django.core.management import call_command
     call_command('build_story_clusters', f'--days={days}')
+    try:
+        from tnd_apps.cache_utils import on_clusters_rebuilt
+        on_clusters_rebuilt()
+    except Exception:
+        pass
     return {'status': 'ok', 'days': days}
 
 
