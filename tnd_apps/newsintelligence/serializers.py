@@ -278,12 +278,30 @@ class StoryClusterDetailSerializer(StoryClusterListSerializer):
         fields = StoryClusterListSerializer.Meta.fields + ['articles', 'timeline', 'perspectives']
 
     def get_articles(self, obj):
-        articles = [
-            link.article
-            for link in obj.cluster_articles.select_related('article__source', 'article__category', 'article__author').all()
-            if link.article.has_full_content
-        ]
-        return ArticleSnippetSerializer(articles, many=True).data
+        links = (
+            obj.cluster_articles
+            .select_related(
+                'article__source',
+                'article__category',
+                'article__author',
+                'article__enrichment',
+            )
+            .filter(article__has_full_content=True)
+            .order_by('-relevance_score', '-article__enrichment__importance_score', '-article__published_at')
+        )
+        result = []
+        for link in links:
+            article = link.article
+            data = ArticleSnippetSerializer(article).data
+            enrichment = getattr(article, 'enrichment', None)
+            if enrichment and enrichment.status == 'completed':
+                data['summary'] = enrichment.summary
+                data['importance_score'] = enrichment.importance_score
+                data['story_arcs'] = enrichment.related_themes or []
+                data['key_facts'] = enrichment.key_facts[:2] if enrichment.key_facts else []
+            data['relevance_score'] = link.relevance_score
+            result.append(data)
+        return result
 
     def get_timeline(self, obj):
         events = obj.timeline_events.select_related('article__source', 'article__category', 'article__author').filter(

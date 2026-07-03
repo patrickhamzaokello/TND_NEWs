@@ -148,12 +148,13 @@ class Command(BaseCommand):
                 state['themes'] |= e_themes
                 state['items'].append(enrichment)
             else:
+                # Prefer a specific named story arc over a generic theme
+                arc_name = (enrichment.related_themes or [None])[0]
                 primary_theme = (
                     enrichment.themes
-                    or enrichment.related_themes
                     or [article.category.name if article.category else 'general']
                 )[0]
-                slug_base = slugify(primary_theme)[:100] or 'general'
+                slug_base = slugify(arc_name or primary_theme)[:100] or 'general'
                 slug = _unique_slug(slug_base, used_slugs)
                 used_slugs.add(slug)
                 cluster_states[slug] = {
@@ -163,6 +164,7 @@ class Command(BaseCommand):
                     'items': [enrichment],
                     'is_new': True,
                     'primary_theme': primary_theme,
+                    'arc_name': arc_name,
                     'slug': slug,
                 }
 
@@ -188,10 +190,14 @@ class Command(BaseCommand):
                 cluster.save(update_fields=['importance_score', 'last_seen_at', 'status', 'updated_at'])
             else:
                 primary_theme = state['primary_theme']
+                arc_name = state.get('arc_name')
+                # Use the specific arc name as the title if available,
+                # otherwise fall back to the generic theme name.
+                title = (arc_name or primary_theme).title()
                 cluster, _ = StoryCluster.objects.update_or_create(
                     slug=slug,
                     defaults={
-                        'title': primary_theme.title(),
+                        'title': title,
                         'summary': top.summary,
                         'why_this_matters': (
                             top.local_impact.get('impact_note', '')
@@ -232,7 +238,7 @@ class Command(BaseCommand):
                     defaults={
                         'event_date': item.article.published_at or item.article.scraped_at,
                         'description': item.summary,
-                        'citations': item.citations,
+                        'citations': [{'url': item.article.url, 'title': item.article.title}],
                     },
                 )
                 if (item.importance_score or 0) >= 8 or item.is_breaking_candidate:

@@ -267,6 +267,8 @@ class ArticleGuidanceView(generics.GenericAPIView):
             'article': ArticleSnippetSerializer(article).data,
             'related_cluster': self._cluster_payload(cluster),
             'key_entities': key_entities,
+            'story_arcs': (enrichment.related_themes or []) if enrichment else [],
+            'key_facts': (enrichment.key_facts or []) if enrichment else [],
             'why_it_matters': self._why_it_matters(article, enrichment, cluster),
             'missing_context': self._missing_context(article, enrichment, cluster),
             'suggested_next_reads': ArticleSnippetSerializer(suggested, many=True).data,
@@ -289,11 +291,13 @@ class ArticleGuidanceView(generics.GenericAPIView):
     def _why_it_matters(self, article, enrichment, cluster):
         if cluster and cluster.why_this_matters:
             return cluster.why_this_matters
-        if enrichment and enrichment.local_impact:
-            return enrichment.local_impact
-        if enrichment and enrichment.summary:
-            return enrichment.summary
-        return article.excerpt
+        if enrichment:
+            impact = enrichment.local_impact or {}
+            if isinstance(impact, dict) and impact.get('impact_note'):
+                return impact['impact_note']
+            if enrichment.summary:
+                return enrichment.summary
+        return article.excerpt or ''
 
     def _missing_context(self, article, enrichment, cluster):
         context = []
@@ -310,33 +314,44 @@ class ArticleGuidanceView(generics.GenericAPIView):
         return context
 
     def _suggested_next_reads(self, article, cluster, enrichment):
-        if cluster:
-            articles = Article.objects.filter(
-                story_cluster_links__cluster=cluster,
-                has_full_content=True,
-            ).exclude(id=article.id).select_related('source', 'category', 'author').order_by(
-                '-enrichment__importance_score',
-                '-published_at',
-            )[:5]
-            if articles:
-                return list(articles)
+        base_qs = Article.objects.filter(has_full_content=True).exclude(
+            id=article.id
+        ).select_related('source', 'category', 'author')
 
-        entity_names = []
-        if enrichment:
-            entity_names = list(
-                EntityMention.objects.filter(enrichment=enrichment)
-                .values_list('normalized_name', flat=True)[:5]
-            )
+        # 1. Same cluster — most topically related
+        if cluster:
+            articles = list(base_qs.filter(
+                story_cluster_links__cluster=cluster,
+            ).order_by('-enrichment__importance_score', '-published_at')[:5])
+            if articles:
+                return articles
+
+        if not enrichment:
+            return []
+
+        # 2. Same story arc via related_themes — articles that the enrichment
+        #    agent already identified as part of the same named storyline
+        arcs = enrichment.related_themes or []
+        if arcs:
+            articles = list(base_qs.filter(
+                enrichment__status='completed',
+                enrichment__related_themes__overlap=arcs,
+            ).order_by('-enrichment__importance_score', '-published_at')[:5])
+            if articles:
+                return articles
+
+        # 3. Shared entities — fallback when no arc signal exists
+        entity_names = list(
+            EntityMention.objects.filter(enrichment=enrichment)
+            .values_list('normalized_name', flat=True)[:5]
+        )
         if not entity_names:
             return []
         return list(
-            Article.objects.filter(
+            base_qs.filter(
                 enrichment__entity_mentions__normalized_name__in=entity_names,
-                has_full_content=True,
-            ).exclude(id=article.id).select_related('source', 'category', 'author').distinct().order_by(
-                '-enrichment__importance_score',
-                '-published_at',
-            )[:5]
+                enrichment__status='completed',
+            ).distinct().order_by('-enrichment__importance_score', '-published_at')[:5]
         )
 
 
