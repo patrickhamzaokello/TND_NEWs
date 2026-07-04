@@ -4,8 +4,8 @@ from rest_framework import serializers, viewsets, status, generics, status, view
 from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.permissions import AllowAny, IsAuthenticated, SAFE_METHODS
-from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value, Sum, Prefetch
-from django.db.models.functions import Greatest
+from django.db.models import Count, Q, F, Case, When, IntegerField, FloatField, Value, Sum, Prefetch, ExpressionWrapper, DurationField
+from django.db.models.functions import Greatest, Extract
 from datetime import timedelta
 from django.utils import timezone
 from rest_framework.pagination import PageNumberPagination
@@ -216,19 +216,78 @@ class ArticleViewSet(viewsets.ModelViewSet):
 
     def _get_intelligence_top_story(self):
         """
-        Pick the top story from completed AI enrichment signals only.
-        Raw/non-enriched articles are intentionally excluded.
-        """
-        time_threshold = timezone.now() - timedelta(hours=24)
-        intelligence_ordering = self._get_intelligence_ordering()
-        queryset = self._get_intelligence_article_queryset()
+        Pick the top story using a time-decayed composite score.
 
-        return (
-            queryset.filter(scraped_at__gte=time_threshold)
-            .order_by(*intelligence_ordering)
-            .first()
-            or queryset.order_by(*intelligence_ordering).first()
-        )
+        Scoring design:
+        - importance_score (0-10) is multiplied by a recency_multiplier that
+          decays every 4 hours. An article that scored 9 six hours ago (~0.75x)
+          ties with a fresh 7 (1.0x), so fresh stories naturally rotate in.
+        - is_breaking_candidate adds a flat +2 boost, but ONLY if the article
+          is under 6 hours old. After that the breaking flag is ignored so
+          yesterday's "breaking" story can no longer hold the top slot.
+        - Hard cap at 18 hours — articles older than that are never top story.
+          Falls back to 36 hours on a slow news day.
+        """
+        now = timezone.now()
+
+        def _scored(qs):
+            return (
+                qs
+                .annotate(
+                    _time_diff=ExpressionWrapper(
+                        now - F('scraped_at'),
+                        output_field=DurationField(),
+                    )
+                )
+                .annotate(
+                    _hours_old=ExpressionWrapper(
+                        Extract('_time_diff', 'epoch') / 3600.0,
+                        output_field=FloatField(),
+                    )
+                )
+                .annotate(
+                    _recency=Case(
+                        When(_hours_old__lte=4,  then=Value(1.00)),
+                        When(_hours_old__lte=8,  then=Value(0.80)),
+                        When(_hours_old__lte=12, then=Value(0.60)),
+                        When(_hours_old__lte=18, then=Value(0.40)),
+                        default=Value(0.20),
+                        output_field=FloatField(),
+                    ),
+                    # Breaking boost expires after 6 h so old "breaking" articles
+                    # can't hold the top slot indefinitely.
+                    _breaking=Case(
+                        When(
+                            enrichment__is_breaking_candidate=True,
+                            _hours_old__lte=6,
+                            then=Value(2.0),
+                        ),
+                        default=Value(0.0),
+                        output_field=FloatField(),
+                    ),
+                )
+                .annotate(
+                    top_story_score=ExpressionWrapper(
+                        F('enrichment__importance_score') * F('_recency') + F('_breaking'),
+                        output_field=FloatField(),
+                    )
+                )
+                .order_by('-top_story_score', '-scraped_at')
+            )
+
+        base = self._get_intelligence_article_queryset()
+
+        # Primary: last 18 hours
+        qs = base.filter(scraped_at__gte=now - timedelta(hours=18))
+        if qs.exists():
+            return _scored(qs).first()
+
+        # Slow-news-day fallback: last 36 hours (no unbounded fallback)
+        qs = base.filter(scraped_at__gte=now - timedelta(hours=36))
+        if qs.exists():
+            return _scored(qs).first()
+
+        return None
 
     def _get_intelligence_article_queryset(self):
         """
