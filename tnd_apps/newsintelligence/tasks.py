@@ -121,10 +121,12 @@ def generate_daily_digest(
 
     try:
         # Top-up enrichment — only for scheduled (non-backfill) runs.
-        # Small batch so the digest task stays fast; the hourly enrichment
-        # task covers the full backlog independently.
+        # Batch of 30 covers the tail of the previous scraping cycle that
+        # slipped past the hourly enrichment task (e.g. Kawowo runs at :50/:55
+        # and its articles are only 15 minutes old when the digest fires at :30).
+        # The hourly enrich_new_articles task (batch=50) handles the main backlog.
         if target_date is None:
-            service = EnrichmentService(batch_size=10)
+            service = EnrichmentService(batch_size=30)
             enrichment_run = service.run_enrichment()
             logger.info(
                 "[Task] pre-digest top-up %s | processed=%d failed=%d",

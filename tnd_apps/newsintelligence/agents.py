@@ -279,31 +279,71 @@ class DailyDigestAgent:
         return digest
 
     def _fetch_enrichments(self, target_date: date):
-        current_tz = timezone.get_current_timezone()
-        end_at = timezone.make_aware(
-            timezone.datetime.combine(target_date, timezone.datetime.max.time()),
-            current_tz,
+        """
+        Fetch the best enriched articles to include in the digest.
+
+        The previous approach used calendar-date selectors with an early-return
+        loop which caused two bugs:
+          1. If even 1 article existed with published_at == target_date (UTC),
+             the loop returned only those articles and ignored everything else.
+          2. The server runs UTC but Uganda is UTC+3, so articles published
+             during the Ugandan news day (06:00–22:00 EAT) span two UTC dates.
+             A calendar-date filter always missed the morning articles.
+
+        Fix: use a rolling 27-hour window anchored to NOW, not to midnight.
+        At 05:30 UTC this covers 05:30 UTC yesterday → 05:30 UTC today, which
+        is 08:30 EAT yesterday → 08:30 EAT today — the full Ugandan news day.
+        Extend to 48 h if fewer than 10 articles are found so thin days still
+        get a digest.
+        """
+        now = timezone.now()
+        base_qs = (
+            ArticleEnrichment.objects
+            .filter(status='completed')
+            .select_related('article', 'article__source')
         )
-        start_at = end_at - timedelta(hours=36)
-        base_qs = ArticleEnrichment.objects.filter(status='completed').select_related('article')
 
-        selectors = [
-            base_qs.filter(article__published_at__date=target_date)
-            .order_by('-importance_score', '-article__published_at'),
-            base_qs.filter(article__published_at__gte=start_at, article__published_at__lte=end_at)
-            .order_by('-importance_score', '-article__published_at'),
-            base_qs.filter(analyzed_at__date=target_date)
-            .order_by('-importance_score', '-analyzed_at'),
-            base_qs.filter(updated_at__gte=start_at, updated_at__lte=end_at)
-            .order_by('-importance_score', '-updated_at'),
-            base_qs.order_by('-importance_score', '-updated_at'),
-        ]
+        # ── Primary: rolling 27-hour window from now ──────────────────────────
+        # Covers the full previous Ugandan news day regardless of UTC date.
+        window_start = now - timedelta(hours=27)
+        enrichments = list(
+            base_qs.filter(
+                analyzed_at__gte=window_start,
+            ).order_by('-importance_score', '-analyzed_at')[:50]
+        )
+        logger.info(
+            "Digest fetch [27h window %s → %s]: %d enrichments",
+            window_start.strftime('%Y-%m-%d %H:%M UTC'),
+            now.strftime('%Y-%m-%d %H:%M UTC'),
+            len(enrichments),
+        )
 
-        for queryset in selectors:
-            enrichments = list(queryset[:50])
-            if enrichments:
-                return enrichments
-        return []
+        # ── Extend to 48 h if the 27-hour window is thin ─────────────────────
+        # Happens on low-news days (public holidays, weekends).
+        if len(enrichments) < 10:
+            extended_start = now - timedelta(hours=48)
+            seen_ids = {e.id for e in enrichments}
+            extra = list(
+                base_qs.filter(
+                    analyzed_at__gte=extended_start,
+                ).exclude(id__in=seen_ids)
+                .order_by('-importance_score', '-analyzed_at')[:50 - len(enrichments)]
+            )
+            enrichments = enrichments + extra
+            logger.info(
+                "Digest fetch extended to 48h: %d total enrichments", len(enrichments)
+            )
+
+        # ── Hard fallback: most recently enriched regardless of date ──────────
+        # Ensures a digest is always generated even on the first run when the
+        # DB has older articles but no recent ones.
+        if not enrichments:
+            enrichments = list(
+                base_qs.order_by('-importance_score', '-analyzed_at')[:50]
+            )
+            logger.warning("Digest fetch fell through to global fallback: %d enrichments", len(enrichments))
+
+        return enrichments
 
     def _get_trending_entities(self, target_date: date, window_days: int = 7) -> list:
         from django.db.models import Count, Avg
