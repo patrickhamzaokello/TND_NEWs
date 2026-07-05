@@ -73,17 +73,44 @@ def _plunk_send(to: str, subject: str, html_body: str) -> bool:
         return False
 
 
+def _enrich_with_images(stories: list) -> list:
+    """
+    Attach featured_image_url to each story dict using the article_id.
+    Returns the same list with an 'image_url' key added to each item.
+    """
+    from tnd_apps.news_scrapping.models import Article
+
+    ids = [s['article_id'] for s in stories if s.get('article_id')]
+    if not ids:
+        return stories
+
+    image_map = dict(
+        Article.objects.filter(id__in=ids)
+        .values_list('id', 'featured_image_url')
+    )
+    for story in stories:
+        story['image_url'] = image_map.get(story.get('article_id')) or ''
+    return stories
+
+
 def _build_context(digest: DailyDigest, subscriber_name: str, unsubscribe_url: str) -> dict:
+    top_stories = _enrich_with_images(list(digest.top_stories or []))
+
     under_radar = digest.under_radar_story or {}
+    if under_radar.get('title'):
+        under_radar = _enrich_with_images([dict(under_radar)])[0]
+    else:
+        under_radar = None
+
     return {
         'digest_date': str(digest.digest_date),
         'digest_date_display': digest.digest_date.strftime('%A, %d %B %Y'),
         'subscriber_name': subscriber_name,
         'digest_text': digest.digest_text,
         'key_concern': digest.key_concern,
-        'top_stories': digest.top_stories or [],
+        'top_stories': top_stories,
         'trending_entities': (digest.trending_entities or [])[:10],
-        'under_radar': under_radar if under_radar.get('title') else None,
+        'under_radar': under_radar,
         'articles_analyzed': digest.articles_analyzed,
         'unsubscribe_url': unsubscribe_url,
         'site_url': SITE_URL,
