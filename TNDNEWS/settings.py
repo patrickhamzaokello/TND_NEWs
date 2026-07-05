@@ -302,6 +302,13 @@ EMAIL_PORT = config('EMAIL_PORT')  #465 (or 587 for TLS)
 EMAIL_HOST_USER = config('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
 EMAIL_PLUNK_API_KEY = config('EMAIL_PLUNK_API_KEY')
+DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='TNDNEWS Daily <digest@mwonya.com>')
+
+# Daily Digest email settings
+DIGEST_FROM_EMAIL = config('DIGEST_FROM_EMAIL', default=DEFAULT_FROM_EMAIL)
+DIGEST_SITE_URL = config('DIGEST_SITE_URL', default='https://newsapi.mwonya.com')
+DIGEST_UNSUBSCRIBE_URL = config('DIGEST_UNSUBSCRIBE_URL', default='https://newsapi.mwonya.com/digest/unsubscribe')
+
 NOTIFICATION_SERVICE_URL = config(
     'NOTIFICATION_SERVICE_URL',
     default='http://notification-service:4000/api/push-notification'

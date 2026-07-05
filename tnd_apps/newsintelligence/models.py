@@ -1,3 +1,5 @@
+import secrets
+
 from django.db import models
 from django.utils import timezone
 
@@ -446,6 +448,84 @@ class ArticleCitation(models.Model):
         indexes = [
             models.Index(fields=['article']),
             models.Index(fields=['source_name']),
+        ]
+
+
+class DigestSubscriber(models.Model):
+    """
+    Anyone who signs up to receive the TNDNEWS Daily Digest by email.
+
+    Users do NOT need an account — a standalone email + unsubscribe token
+    is sufficient. If they do have an account the `user` FK links them so
+    we can show their subscription status in a profile page.
+    """
+
+    FREQUENCY_CHOICES = [
+        ('daily', 'Daily (every morning)'),
+        ('breaking', 'Breaking news only'),
+    ]
+
+    email = models.EmailField(unique=True, db_index=True)
+    name = models.CharField(max_length=120, blank=True, help_text="Display name in greeting")
+
+    # Optional link to a registered user account
+    user = models.OneToOneField(
+        'authentication.User',
+        null=True, blank=True,
+        on_delete=models.SET_NULL,
+        related_name='digest_subscription',
+    )
+
+    frequency = models.CharField(
+        max_length=20, choices=FREQUENCY_CHOICES, default='daily'
+    )
+
+    is_active = models.BooleanField(
+        default=True,
+        help_text="Set False on unsubscribe — keeps record for analytics"
+    )
+
+    # Unsubscribe token — sent in every email footer link
+    unsubscribe_token = models.CharField(max_length=64, unique=True, editable=False)
+
+    confirmed = models.BooleanField(
+        default=False,
+        help_text="True after the confirmation email is clicked"
+    )
+    confirmed_at = models.DateTimeField(null=True, blank=True)
+
+    # Delivery stats
+    last_sent_at = models.DateTimeField(null=True, blank=True)
+    emails_sent = models.PositiveIntegerField(default=0)
+    last_digest_date = models.DateField(
+        null=True, blank=True,
+        help_text="Date of the last digest successfully delivered"
+    )
+
+    subscribed_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if not self.unsubscribe_token:
+            self.unsubscribe_token = secrets.token_urlsafe(48)
+        super().save(*args, **kwargs)
+
+    def mark_sent(self, digest_date):
+        self.last_sent_at = timezone.now()
+        self.emails_sent += 1
+        self.last_digest_date = digest_date
+        self.save(update_fields=['last_sent_at', 'emails_sent', 'last_digest_date'])
+
+    def __str__(self):
+        status = 'active' if self.is_active else 'unsubscribed'
+        return f"{self.email} ({status})"
+
+    class Meta:
+        db_table = 'digest_subscribers'
+        ordering = ['-subscribed_at']
+        indexes = [
+            models.Index(fields=['is_active', 'confirmed']),
+            models.Index(fields=['last_sent_at']),
         ]
 
 

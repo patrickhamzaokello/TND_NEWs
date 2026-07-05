@@ -140,6 +140,27 @@ def generate_daily_digest(
         refresh_existing = force_refresh and target_date is None
         result = service.run_daily_digest(target_date, force_refresh=refresh_existing)
         result['slot'] = slot
+
+        # Email subscribers — only on the morning slot (08:30 EAT) or manual runs,
+        # not on every intra-day refresh, to avoid sending multiple emails per day.
+        if result.get('status') != 'error' and slot in ('morning', 'manual', ''):
+            try:
+                from .models import DailyDigest
+                from .email_service import send_digest_to_all
+                digest_date = target_date or timezone.localdate()
+                digest = DailyDigest.objects.filter(
+                    digest_date=digest_date, is_published=True
+                ).first()
+                if digest:
+                    email_result = send_digest_to_all(digest)
+                    result['email'] = email_result
+                    logger.info(
+                        "[Task] digest email %s | sent=%d failed=%d",
+                        label, email_result['sent'], email_result['failed'],
+                    )
+            except Exception as exc:
+                logger.error("Digest email send failed %s: %s", label, exc)
+
         return result
 
     except Exception as exc:

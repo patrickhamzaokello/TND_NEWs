@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TNDNEWS Daily Digest — {{ digest_date }}</title>
+  <style>
+    body { margin: 0; padding: 0; background: #f4f4f4; font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; }
+    .wrapper { max-width: 620px; margin: 32px auto; background: #ffffff; border-radius: 6px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,.08); }
+    .header { background: #c0392b; padding: 28px 32px 20px; }
+    .header h1 { margin: 0 0 4px; font-size: 26px; color: #fff; letter-spacing: -0.5px; }
+    .header p { margin: 0; font-size: 13px; color: rgba(255,255,255,.75); font-family: Arial, sans-serif; }
+    .digest-body { padding: 28px 32px; }
+    .digest-text { font-size: 16px; line-height: 1.75; color: #333; margin: 0 0 28px; }
+    .section-title { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; color: #c0392b; margin: 0 0 12px; padding-bottom: 6px; border-bottom: 2px solid #c0392b; }
+    .story-card { border-left: 3px solid #e0e0e0; padding: 12px 16px; margin-bottom: 16px; background: #fafafa; border-radius: 0 4px 4px 0; }
+    .story-card h3 { margin: 0 0 6px; font-size: 16px; line-height: 1.4; color: #1a1a1a; }
+    .story-card p { margin: 0 0 8px; font-size: 14px; line-height: 1.6; color: #555; font-family: Arial, sans-serif; }
+    .story-meta { font-size: 12px; color: #999; font-family: Arial, sans-serif; }
+    .importance-badge { display: inline-block; background: #c0392b; color: #fff; font-size: 11px; font-weight: 700; padding: 2px 7px; border-radius: 10px; margin-left: 6px; font-family: Arial, sans-serif; }
+    .key-concern { background: #fff8f0; border: 1px solid #f0d080; border-radius: 4px; padding: 16px 20px; margin: 24px 0; }
+    .key-concern .label { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #b07800; margin-bottom: 6px; }
+    .key-concern p { margin: 0; font-size: 15px; line-height: 1.65; color: #5a3e00; }
+    .under-radar { background: #f0f8ff; border: 1px solid #b0d4f0; border-radius: 4px; padding: 16px 20px; margin: 24px 0; }
+    .under-radar .label { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; color: #1565c0; margin-bottom: 6px; }
+    .under-radar p { margin: 0; font-size: 14px; line-height: 1.6; color: #0d3c6a; font-family: Arial, sans-serif; }
+    .entities { margin: 24px 0; }
+    .entity-pill { display: inline-block; background: #f0f0f0; border-radius: 12px; padding: 4px 12px; margin: 3px 4px 3px 0; font-size: 12px; font-family: Arial, sans-serif; color: #444; }
+    .divider { border: none; border-top: 1px solid #ebebeb; margin: 28px 0; }
+    .footer { background: #f9f9f9; padding: 20px 32px; border-top: 1px solid #ebebeb; font-family: Arial, sans-serif; font-size: 12px; color: #888; text-align: center; }
+    .footer a { color: #c0392b; text-decoration: none; }
+    .footer .stats { margin-bottom: 12px; }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+
+  <!-- HEADER -->
+  <div class="header">
+    <h1>TNDNEWS Daily Digest</h1>
+    <p>{{ digest_date_display }} &nbsp;·&nbsp; {{ articles_analyzed }} articles analysed</p>
+  </div>
+
+  <div class="digest-body">
+
+    {% if subscriber_name %}
+    <p style="font-family:Arial,sans-serif;font-size:14px;color:#555;margin:0 0 20px;">
+      Good morning, {{ subscriber_name }}.
+    </p>
+    {% endif %}
+
+    <!-- NARRATIVE -->
+    <div class="digest-text">{{ digest_text }}</div>
+
+    <!-- KEY CONCERN -->
+    {% if key_concern %}
+    <div class="key-concern">
+      <div class="label">Key concern today</div>
+      <p>{{ key_concern }}</p>
+    </div>
+    {% endif %}
+
+    <!-- TOP STORIES -->
+    {% if top_stories %}
+    <div class="section-title">Top Stories</div>
+    {% for story in top_stories %}
+    <div class="story-card">
+      <h3>{{ story.title }}</h3>
+      {% if story.why_it_matters %}
+      <p>{{ story.why_it_matters }}</p>
+      {% endif %}
+      <div class="story-meta">
+        Importance <span class="importance-badge">{{ story.importance }}/10</span>
+      </div>
+    </div>
+    {% endfor %}
+    {% endif %}
+
+    <!-- UNDER THE RADAR -->
+    {% if under_radar %}
+    <div class="under-radar">
+      <div class="label">Under the radar</div>
+      <p><strong>{{ under_radar.title }}</strong>{% if under_radar.reason %} — {{ under_radar.reason }}{% endif %}</p>
+    </div>
+    {% endif %}
+
+    <!-- TRENDING ENTITIES -->
+    {% if trending_entities %}
+    <hr class="divider" />
+    <div class="section-title">Who & What is in the news</div>
+    <div class="entities">
+      {% for entity in trending_entities %}
+      <span class="entity-pill">{{ entity.entity_name }} ({{ entity.mention_count }})</span>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+  </div><!-- /digest-body -->
+
+  <!-- FOOTER -->
+  <div class="footer">
+    <div class="stats">
+      Powered by TNDNEWS Intelligence &nbsp;·&nbsp; {{ articles_analyzed }} articles from Uganda's top sources
+    </div>
+    <div>
+      You're receiving this because you subscribed to the TNDNEWS Daily Digest.<br />
+      <a href="{{ unsubscribe_url }}">Unsubscribe</a>
+      &nbsp;·&nbsp;
+      <a href="{{ site_url }}">Read online</a>
+    </div>
+  </div>
+
+</div>
+</body>
+</html>
