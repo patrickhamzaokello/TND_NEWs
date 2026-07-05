@@ -296,18 +296,9 @@ STORAGES = {
     },
 }
 
-# Plunk SMTP relay — https://useplunk.com/docs/smtp
-# Port 587 = STARTTLS (EMAIL_USE_TLS=True, EMAIL_USE_SSL=False)
-# Port 465 = SSL    (EMAIL_USE_SSL=True,  EMAIL_USE_TLS=False)
-# Plunk recommends 587. PORT in .env is overridden to 587 here.
+# Plunk REST API — digest emails are sent via HTTP (email_service.py),
+# not Django's SMTP backend, so no EMAIL_HOST / PORT settings are needed.
 EMAIL_PLUNK_API_KEY = config('EMAIL_PLUNK_API_KEY')
-EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
-EMAIL_HOST = config('EMAIL_SERVER_HOST', default='smtp.useplunk.com')
-EMAIL_PORT = 587          # force 587/STARTTLS regardless of .env
-EMAIL_USE_TLS = True
-EMAIL_USE_SSL = False     # must be False when USE_TLS is True
-EMAIL_HOST_USER = config('EMAIL_HOST_USER', default='plunk')
-EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD', default=EMAIL_PLUNK_API_KEY)
 DEFAULT_FROM_EMAIL = config('DEFAULT_FROM_EMAIL', default='TNDNEWS Daily <digest@mwonya.com>')
 
 # Daily Digest email settings
