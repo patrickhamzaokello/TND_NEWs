@@ -461,8 +461,8 @@ class DigestSubscriber(models.Model):
     """
 
     FREQUENCY_CHOICES = [
-        ('daily',   'Daily morning digest only'),
-        ('all_day', 'Morning digest + midday/evening/night flash updates'),
+        ('morning_evening', 'Morning digest + evening articles (default)'),
+        ('daily',           'Morning digest only'),
         ('breaking', 'Breaking news only'),
     ]
 
@@ -485,7 +485,7 @@ class DigestSubscriber(models.Model):
     )
 
     frequency = models.CharField(
-        max_length=20, choices=FREQUENCY_CHOICES, default='daily'
+        max_length=20, choices=FREQUENCY_CHOICES, default='morning_evening'
     )
 
     is_active = models.BooleanField(

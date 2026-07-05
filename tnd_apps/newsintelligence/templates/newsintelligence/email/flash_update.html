@@ -51,10 +51,18 @@
   </div>
 
   <!-- INTRO -->
-  {% if subscriber_name %}
-  <p class="intro">Hi {{ subscriber_name }}, here are the most important stories that broke since this morning.</p>
+  {% if slot_label == "Evening" %}
+    {% if subscriber_name %}
+    <p class="intro">Hi {{ subscriber_name }}, here are the most important stories that came in today — a roundup of Uganda's top news before you close the day.</p>
+    {% else %}
+    <p class="intro">Your evening roundup — the most important stories from Uganda's news cycle today.</p>
+    {% endif %}
   {% else %}
-  <p class="intro">Here are the most important stories from the {{ slot_label|lower }} news cycle.</p>
+    {% if subscriber_name %}
+    <p class="intro">Hi {{ subscriber_name }}, here are the most important stories that broke since this morning.</p>
+    {% else %}
+    <p class="intro">Here are the most important stories from the {{ slot_label|lower }} news cycle.</p>
+    {% endif %}
   {% endif %}
 
   <!-- ARTICLES -->

@@ -144,11 +144,9 @@ def _build_context(digest: DailyDigest, subscriber_name: str, unsubscribe_url: s
 # ── Slot metadata ─────────────────────────────────────────────────────────────
 
 SLOT_CONFIG = {
-    # slot        label        window_hours  min_importance  subject_prefix
-    'morning': ('Morning',    None,          6,             'NWITQ Morning Brief'),
-    'midday':  ('Midday',     4,             7,             'NWITQ Midday Update'),
-    'evening': ('Evening',    6,             7,             'NWITQ Evening Brief'),
-    'night':   ('Night',      3,             7,             'NWITQ Night Round-up'),
+    # slot        label      window_hours  min_importance  subject_prefix
+    'morning': ('Morning',   None,         6,              'NWITQ Morning Brief'),
+    'evening': ('Evening',   10,           6,              'NWITQ Evening Roundup'),
 }
 
 
@@ -299,11 +297,10 @@ def send_flash_update(slot: str) -> dict:
                     slot, min_importance, window_hours)
         return {'sent': 0, 'failed': 0, 'total': 0, 'articles_found': 0}
 
-    # Only all_day subscribers get flash updates; skip anyone already sent this slot today
     subscribers = DigestSubscriber.objects.filter(
         is_active=True,
         confirmed=True,
-        frequency='all_day',
+        frequency='morning_evening',
     ).exclude(last_digest_date=today, last_slot_sent=slot)
 
     total = subscribers.count()

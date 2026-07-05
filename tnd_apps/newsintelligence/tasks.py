@@ -177,16 +177,12 @@ def send_digest_emails(self, target_date_str: str = None, slot: str = 'morning')
     Send the scheduled email batch for a given slot via Plunk.
 
     Slots:
-      morning  — full daily digest to all subscribers (daily + all_day)
-      midday   — flash update to all_day subscribers only
-      evening  — flash update to all_day subscribers only
-      night    — flash update to all_day subscribers only
+      morning  — full daily digest to all subscribers
+      evening  — articles roundup to morning_evening subscribers only
 
     Beat schedule (EAT = UTC+3):
       05:35 UTC → morning  (08:35 EAT)
-      09:35 UTC → midday   (12:35 EAT)
       15:35 UTC → evening  (18:35 EAT)
-      18:35 UTC → night    (21:35 EAT)
     """
     from datetime import datetime
     from .models import DailyDigest
@@ -204,9 +200,7 @@ def send_digest_emails(self, target_date_str: str = None, slot: str = 'morning')
     logger.info("[Task] send_digest_emails | slot=%s date=%s", slot, target_date)
 
     try:
-        # Flash slots don't need a DailyDigest record — they pull directly from
-        # ArticleEnrichment.
-        if slot != 'morning':
+        if slot == 'evening':
             result = send_flash_update(slot)
             logger.info(
                 "[Task] send_digest_emails [%s] done | sent=%d failed=%d articles=%d",
