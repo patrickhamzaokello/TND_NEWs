@@ -73,10 +73,10 @@ def _plunk_send(to: str, subject: str, html_body: str) -> bool:
         return False
 
 
-def _enrich_with_images(stories: list) -> list:
+def _enrich_stories(stories: list) -> list:
     """
-    Attach featured_image_url to each story dict using the article_id.
-    Returns the same list with an 'image_url' key added to each item.
+    Attach image, source, author, and article URL to each story dict.
+    All data fetched in a single query — no N+1.
     """
     from tnd_apps.news_scrapping.models import Article
 
@@ -84,21 +84,38 @@ def _enrich_with_images(stories: list) -> list:
     if not ids:
         return stories
 
-    image_map = dict(
+    articles = (
         Article.objects.filter(id__in=ids)
-        .values_list('id', 'featured_image_url')
+        .select_related('source', 'author')
+        .values(
+            'id',
+            'url',
+            'featured_image_url',
+            'source__name',
+            'source__base_url',
+            'author__name',
+            'author__profile_url',
+        )
     )
+    article_map = {a['id']: a for a in articles}
+
     for story in stories:
-        story['image_url'] = image_map.get(story.get('article_id')) or ''
+        a = article_map.get(story.get('article_id')) or {}
+        story['image_url']     = a.get('featured_image_url') or ''
+        story['article_url']   = a.get('url') or ''
+        story['source_name']   = a.get('source__name') or ''
+        story['source_url']    = a.get('source__base_url') or ''
+        story['author_name']   = a.get('author__name') or ''
+        story['author_url']    = a.get('author__profile_url') or ''
     return stories
 
 
 def _build_context(digest: DailyDigest, subscriber_name: str, unsubscribe_url: str) -> dict:
-    top_stories = _enrich_with_images(list(digest.top_stories or []))
+    top_stories = _enrich_stories(list(digest.top_stories or []))
 
     under_radar = digest.under_radar_story or {}
     if under_radar.get('title'):
-        under_radar = _enrich_with_images([dict(under_radar)])[0]
+        under_radar = _enrich_stories([dict(under_radar)])[0]
     else:
         under_radar = None
 
