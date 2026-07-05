@@ -140,27 +140,6 @@ def generate_daily_digest(
         refresh_existing = force_refresh and target_date is None
         result = service.run_daily_digest(target_date, force_refresh=refresh_existing)
         result['slot'] = slot
-
-        # Email subscribers — only on the morning slot (08:30 EAT) or manual runs,
-        # not on every intra-day refresh, to avoid sending multiple emails per day.
-        if result.get('status') != 'error' and slot in ('morning', 'manual', ''):
-            try:
-                from .models import DailyDigest
-                from .email_service import send_digest_to_all
-                digest_date = target_date or timezone.localdate()
-                digest = DailyDigest.objects.filter(
-                    digest_date=digest_date, is_published=True
-                ).first()
-                if digest:
-                    email_result = send_digest_to_all(digest)
-                    result['email'] = email_result
-                    logger.info(
-                        "[Task] digest email %s | sent=%d failed=%d",
-                        label, email_result['sent'], email_result['failed'],
-                    )
-            except Exception as exc:
-                logger.error("Digest email send failed %s: %s", label, exc)
-
         return result
 
     except Exception as exc:
@@ -185,3 +164,59 @@ def send_story_alerts(limit: int = 20):
     from django.core.management import call_command
     call_command('send_story_alerts', f'--limit={limit}')
     return {'status': 'ok', 'limit': limit}
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    name='newsintelligence.tasks.send_digest_emails',
+)
+def send_digest_emails(self, target_date_str: str = None):
+    """
+    Send today's published digest to all active subscribers via Plunk.
+
+    Scheduled once a day at 05:35 UTC (08:35 EAT) — 5 minutes after the
+    morning digest generation fires at 05:30 UTC, giving it time to finish.
+
+    Can also be triggered manually:
+        from tnd_apps.newsintelligence.tasks import send_digest_emails
+        send_digest_emails.delay()                        # today
+        send_digest_emails.delay('2026-07-05')            # specific date
+    """
+    from datetime import datetime
+    from .models import DailyDigest
+    from .email_service import send_digest_to_all
+
+    if target_date_str:
+        try:
+            target_date = datetime.strptime(target_date_str, '%Y-%m-%d').date()
+        except ValueError:
+            logger.error("send_digest_emails: invalid date %r", target_date_str)
+            return {'error': f'Invalid date: {target_date_str!r}'}
+    else:
+        target_date = timezone.localdate()
+
+    logger.info("[Task] send_digest_emails | date=%s", target_date)
+
+    try:
+        digest = DailyDigest.objects.filter(
+            digest_date=target_date, is_published=True
+        ).first()
+
+        if not digest:
+            logger.warning(
+                "send_digest_emails: no published digest for %s — skipping", target_date
+            )
+            return {'status': 'skipped', 'reason': 'no published digest', 'date': str(target_date)}
+
+        result = send_digest_to_all(digest)
+        logger.info(
+            "[Task] send_digest_emails done | date=%s sent=%d failed=%d",
+            target_date, result['sent'], result['failed'],
+        )
+        return {'status': 'ok', 'date': str(target_date), **result}
+
+    except Exception as exc:
+        logger.exception("send_digest_emails failed for %s: %s", target_date, exc)
+        raise self.retry(exc=exc)

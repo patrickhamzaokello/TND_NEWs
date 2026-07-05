@@ -75,6 +75,13 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=30, hour=18),
         'kwargs': {'slot': 'night'},
     },
+    # Daily Digest email — fires at 05:35 UTC (08:35 EAT), 5 minutes after the
+    # morning digest generation (05:30 UTC) so the digest is ready to send.
+    # Retries up to 3× with a 2-minute delay if Plunk is temporarily unavailable.
+    'send-digest-emails-morning': {
+        'task': 'newsintelligence.tasks.send_digest_emails',
+        'schedule': crontab(minute=35, hour=5),   # 08:35 EAT
+    },
     'build-story-clusters-hourly': {
         'task': 'newsintelligence.tasks.build_story_clusters',
         'schedule': crontab(minute=45),
