@@ -21,7 +21,7 @@ logger = logging.getLogger(__name__)
 PLUNK_API_URL = 'https://next-api.useplunk.com/v1/send'
 PLUNK_TIMEOUT = 15  # seconds per request
 
-DIGEST_FROM = getattr(settings, 'DIGEST_FROM_EMAIL', 'digest@mwonya.com')
+DIGEST_FROM = getattr(settings, 'DIGEST_FROM_EMAIL', 'hello@mwonya.com')
 SITE_URL = getattr(settings, 'DIGEST_SITE_URL', 'https://newsapi.mwonya.com')
 UNSUBSCRIBE_BASE = getattr(settings, 'DIGEST_UNSUBSCRIBE_URL', f'{SITE_URL}/digest/unsubscribe')
 
@@ -39,6 +39,13 @@ def _unsubscribe_url(token: str) -> str:
 
 def _plunk_send(to: str, subject: str, html_body: str) -> bool:
     """POST a single email to the Plunk API. Returns True on success."""
+    # Plunk requires a plain email address in `from` — strip any "Name <addr>" wrapper.
+    import re
+    from_email = DIGEST_FROM
+    match = re.search(r'<([^>]+)>', from_email)
+    if match:
+        from_email = match.group(1)
+
     try:
         resp = requests.post(
             PLUNK_API_URL,
@@ -47,7 +54,7 @@ def _plunk_send(to: str, subject: str, html_body: str) -> bool:
                 'to': to,
                 'subject': subject,
                 'body': html_body,
-                'from': DIGEST_FROM,
+                'from': from_email,
             },
             timeout=PLUNK_TIMEOUT,
         )
