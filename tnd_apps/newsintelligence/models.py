@@ -461,8 +461,16 @@ class DigestSubscriber(models.Model):
     """
 
     FREQUENCY_CHOICES = [
-        ('daily', 'Daily (every morning)'),
+        ('daily',   'Daily morning digest only'),
+        ('all_day', 'Morning digest + midday/evening/night flash updates'),
         ('breaking', 'Breaking news only'),
+    ]
+
+    SLOT_CHOICES = [
+        ('morning', 'Morning'),
+        ('midday',  'Midday'),
+        ('evening', 'Evening'),
+        ('night',   'Night'),
     ]
 
     email = models.EmailField(unique=True, db_index=True)
@@ -501,6 +509,10 @@ class DigestSubscriber(models.Model):
         null=True, blank=True,
         help_text="Date of the last digest successfully delivered"
     )
+    last_slot_sent = models.CharField(
+        max_length=20, blank=True, default='',
+        help_text="Slot name of the last email sent (morning/midday/evening/night)"
+    )
 
     subscribed_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -510,11 +522,12 @@ class DigestSubscriber(models.Model):
             self.unsubscribe_token = secrets.token_urlsafe(48)
         super().save(*args, **kwargs)
 
-    def mark_sent(self, digest_date):
+    def mark_sent(self, digest_date, slot: str = ''):
         self.last_sent_at = timezone.now()
         self.emails_sent += 1
         self.last_digest_date = digest_date
-        self.save(update_fields=['last_sent_at', 'emails_sent', 'last_digest_date'])
+        self.last_slot_sent = slot
+        self.save(update_fields=['last_sent_at', 'emails_sent', 'last_digest_date', 'last_slot_sent'])
 
     def __str__(self):
         status = 'active' if self.is_active else 'unsubscribed'

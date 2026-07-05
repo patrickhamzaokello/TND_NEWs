@@ -4,9 +4,16 @@ Daily Digest email delivery via the Plunk REST API.
 Plunk docs: https://useplunk.com/docs/api-reference/send-email
 Endpoint: POST https://next-api.useplunk.com/v1/send
 Auth:      Authorization: Bearer <EMAIL_PLUNK_API_KEY>
+
+Sending schedule (EAT = UTC+3):
+  08:35  morning  — full daily digest to all subscribers (daily + all_day)
+  12:35  midday   — flash update with top new articles (all_day only)
+  18:35  evening  — flash update with top new articles (all_day only)
+  21:35  night    — flash update with top new articles (all_day only)
 """
 
 import logging
+from datetime import timedelta
 
 import requests
 from django.conf import settings
@@ -134,34 +141,47 @@ def _build_context(digest: DailyDigest, subscriber_name: str, unsubscribe_url: s
     }
 
 
+# ── Slot metadata ─────────────────────────────────────────────────────────────
+
+SLOT_CONFIG = {
+    # slot        label        window_hours  min_importance  subject_prefix
+    'morning': ('Morning',    None,          6,             'NWITQ Morning Brief'),
+    'midday':  ('Midday',     4,             7,             'NWITQ Midday Update'),
+    'evening': ('Evening',    6,             7,             'NWITQ Evening Brief'),
+    'night':   ('Night',      3,             7,             'NWITQ Night Round-up'),
+}
+
+
+# ── Morning: full digest ───────────────────────────────────────────────────────
+
 def _send_one(digest: DailyDigest, subscriber: DigestSubscriber) -> bool:
-    """Render and send the digest to a single subscriber. Returns True on success."""
+    """Render and send the full morning digest to a single subscriber."""
     ctx = _build_context(
         digest,
         subscriber_name=subscriber.name or '',
         unsubscribe_url=_unsubscribe_url(subscriber.unsubscribe_token),
     )
     html_body = render_to_string('newsintelligence/email/daily_digest.html', ctx)
-    subject = f'TNDNEWS Morning Brief — {ctx["digest_date_display"]}'
+    date_display = digest.digest_date.strftime('%A, %d %B %Y')
+    subject = f'NWITQ Morning Brief — {date_display}'
 
     ok = _plunk_send(subscriber.email, subject, html_body)
     if ok:
-        subscriber.mark_sent(digest.digest_date)
-        logger.info('Digest email sent → %s', subscriber.email)
+        subscriber.mark_sent(digest.digest_date, slot='morning')
+        logger.info('Morning digest sent → %s', subscriber.email)
     return ok
 
 
 def send_digest_to_all(digest: DailyDigest) -> dict:
     """
-    Send `digest` to every active, confirmed subscriber who hasn't already
-    received this date's edition.
-
-    Returns: {sent, failed, total}
+    Send the full morning digest to all active confirmed subscribers who
+    haven't already received today's edition.
     """
     if not digest.is_published:
-        logger.warning('Digest %s is not published — skipping email send', digest.digest_date)
+        logger.warning('Digest %s is not published — skipping', digest.digest_date)
         return {'sent': 0, 'failed': 0, 'total': 0}
 
+    # All active confirmed subscribers — morning goes to everyone (daily + all_day)
     subscribers = DigestSubscriber.objects.filter(
         is_active=True,
         confirmed=True,
@@ -169,8 +189,7 @@ def send_digest_to_all(digest: DailyDigest) -> dict:
 
     total = subscribers.count()
     sent = failed = 0
-
-    logger.info('Sending digest %s to %d subscribers via Plunk', digest.digest_date, total)
+    logger.info('Morning digest %s → %d subscribers', digest.digest_date, total)
 
     for sub in subscribers.iterator():
         if _send_one(digest, sub):
@@ -178,29 +197,160 @@ def send_digest_to_all(digest: DailyDigest) -> dict:
         else:
             failed += 1
 
-    logger.info(
-        'Digest email run complete | date=%s sent=%d failed=%d',
-        digest.digest_date, sent, failed,
-    )
+    logger.info('Morning digest done | sent=%d failed=%d', sent, failed)
     return {'sent': sent, 'failed': failed, 'total': total}
 
 
 def send_digest_to_email(digest: DailyDigest, email: str) -> bool:
-    """
-    Send a one-off digest to a specific address (testing).
-    Does not update any subscriber records.
-    """
+    """One-off test send — does not touch subscriber records."""
     ctx = _build_context(
         digest,
         subscriber_name='',
         unsubscribe_url=f'{UNSUBSCRIBE_BASE}?token=test-token',
     )
     html_body = render_to_string('newsintelligence/email/daily_digest.html', ctx)
-    subject = f'[TEST] TNDNEWS Morning Brief — {ctx["digest_date_display"]}'
+    date_display = digest.digest_date.strftime('%A, %d %B %Y')
+    subject = f'[TEST] NWITQ Morning Brief — {date_display}'
 
     ok = _plunk_send(email, subject, html_body)
     if ok:
         logger.info('Test digest email sent to %s', email)
     else:
         logger.error('Test digest email failed for %s', email)
+    return ok
+
+
+# ── Flash updates: midday / evening / night ───────────────────────────────────
+
+def _get_flash_articles(window_hours: int, min_importance: int = 7, limit: int = 5) -> list:
+    """
+    Fetch articles enriched within the last `window_hours` with importance
+    at or above `min_importance`, ordered best-first.
+    Returns plain dicts ready for the template.
+    """
+    from .models import ArticleEnrichment
+
+    cutoff = timezone.now() - timedelta(hours=window_hours)
+    enrichments = (
+        ArticleEnrichment.objects
+        .filter(status='completed', importance_score__gte=min_importance, analyzed_at__gte=cutoff)
+        .select_related('article', 'article__source', 'article__author')
+        .order_by('-importance_score', '-analyzed_at')[:limit]
+    )
+
+    articles = []
+    for e in enrichments:
+        a = e.article
+        articles.append({
+            'title':          a.title,
+            'url':            a.url or '',
+            'summary':        e.summary,
+            'importance_score': e.importance_score,
+            'image_url':      a.featured_image_url or '',
+            'source_name':    a.source.name if a.source else '',
+            'source_url':     a.source.base_url if a.source else '',
+            'author_name':    a.author.name if a.author else '',
+            'author_url':     a.author.profile_url if a.author else '',
+        })
+    return articles
+
+
+def _send_flash_one(slot: str, articles: list, date_display: str, subscriber: DigestSubscriber) -> bool:
+    """Render and send a flash update to a single subscriber."""
+    label, _, _, subject_prefix = SLOT_CONFIG[slot]
+    ctx = {
+        'slot_label':       label,
+        'digest_date':      str(timezone.localdate()),
+        'digest_date_display': date_display,
+        'subscriber_name':  subscriber.name or '',
+        'articles':         articles,
+        'article_count':    len(articles),
+        'unsubscribe_url':  _unsubscribe_url(subscriber.unsubscribe_token),
+        'site_url':         SITE_URL,
+    }
+    html_body = render_to_string('newsintelligence/email/flash_update.html', ctx)
+    subject = f'{subject_prefix} — {date_display}'
+
+    ok = _plunk_send(subscriber.email, subject, html_body)
+    if ok:
+        subscriber.mark_sent(timezone.localdate(), slot=slot)
+        logger.info('Flash [%s] sent → %s', slot, subscriber.email)
+    return ok
+
+
+def send_flash_update(slot: str) -> dict:
+    """
+    Send a flash update for the given slot to all `all_day` subscribers.
+    Skips subscribers who already received this slot today.
+
+    Returns: {sent, failed, total, articles_found}
+    """
+    if slot not in SLOT_CONFIG:
+        logger.error('Unknown slot %r — must be one of %s', slot, list(SLOT_CONFIG))
+        return {'sent': 0, 'failed': 0, 'total': 0, 'articles_found': 0}
+
+    _, window_hours, min_importance, _ = SLOT_CONFIG[slot]
+    today = timezone.localdate()
+    date_display = today.strftime('%A, %d %B %Y')
+
+    articles = _get_flash_articles(window_hours, min_importance)
+    if not articles:
+        logger.info('Flash [%s]: no articles with importance>=%d in last %dh — skipping',
+                    slot, min_importance, window_hours)
+        return {'sent': 0, 'failed': 0, 'total': 0, 'articles_found': 0}
+
+    # Only all_day subscribers get flash updates; skip anyone already sent this slot today
+    subscribers = DigestSubscriber.objects.filter(
+        is_active=True,
+        confirmed=True,
+        frequency='all_day',
+    ).exclude(last_digest_date=today, last_slot_sent=slot)
+
+    total = subscribers.count()
+    sent = failed = 0
+    logger.info('Flash [%s] → %d subscribers | %d articles', slot, total, len(articles))
+
+    for sub in subscribers.iterator():
+        if _send_flash_one(slot, articles, date_display, sub):
+            sent += 1
+        else:
+            failed += 1
+
+    logger.info('Flash [%s] done | sent=%d failed=%d', slot, sent, failed)
+    return {'sent': sent, 'failed': failed, 'total': total, 'articles_found': len(articles)}
+
+
+def send_flash_to_email(slot: str, email: str) -> bool:
+    """One-off test flash send — does not touch subscriber records."""
+    if slot not in SLOT_CONFIG:
+        logger.error('Unknown slot %r', slot)
+        return False
+
+    _, window_hours, min_importance, subject_prefix = SLOT_CONFIG[slot]
+    label = SLOT_CONFIG[slot][0]
+    today = timezone.localdate()
+    date_display = today.strftime('%A, %d %B %Y')
+
+    articles = _get_flash_articles(window_hours, min_importance)
+    if not articles:
+        logger.warning('Flash [%s] test: no articles found — sending empty preview', slot)
+
+    ctx = {
+        'slot_label':          label,
+        'digest_date':         str(today),
+        'digest_date_display': date_display,
+        'subscriber_name':     '',
+        'articles':            articles,
+        'article_count':       len(articles),
+        'unsubscribe_url':     f'{UNSUBSCRIBE_BASE}?token=test-token',
+        'site_url':            SITE_URL,
+    }
+    html_body = render_to_string('newsintelligence/email/flash_update.html', ctx)
+    subject = f'[TEST] {subject_prefix} — {date_display}'
+
+    ok = _plunk_send(email, subject, html_body)
+    if ok:
+        logger.info('Test flash [%s] sent to %s', slot, email)
+    else:
+        logger.error('Test flash [%s] failed for %s', slot, email)
     return ok

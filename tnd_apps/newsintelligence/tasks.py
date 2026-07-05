@@ -172,21 +172,25 @@ def send_story_alerts(limit: int = 20):
     default_retry_delay=120,
     name='newsintelligence.tasks.send_digest_emails',
 )
-def send_digest_emails(self, target_date_str: str = None):
+def send_digest_emails(self, target_date_str: str = None, slot: str = 'morning'):
     """
-    Send today's published digest to all active subscribers via Plunk.
+    Send the scheduled email batch for a given slot via Plunk.
 
-    Scheduled once a day at 05:35 UTC (08:35 EAT) — 5 minutes after the
-    morning digest generation fires at 05:30 UTC, giving it time to finish.
+    Slots:
+      morning  — full daily digest to all subscribers (daily + all_day)
+      midday   — flash update to all_day subscribers only
+      evening  — flash update to all_day subscribers only
+      night    — flash update to all_day subscribers only
 
-    Can also be triggered manually:
-        from tnd_apps.newsintelligence.tasks import send_digest_emails
-        send_digest_emails.delay()                        # today
-        send_digest_emails.delay('2026-07-05')            # specific date
+    Beat schedule (EAT = UTC+3):
+      05:35 UTC → morning  (08:35 EAT)
+      09:35 UTC → midday   (12:35 EAT)
+      15:35 UTC → evening  (18:35 EAT)
+      18:35 UTC → night    (21:35 EAT)
     """
     from datetime import datetime
     from .models import DailyDigest
-    from .email_service import send_digest_to_all
+    from .email_service import send_digest_to_all, send_flash_update
 
     if target_date_str:
         try:
@@ -197,26 +201,37 @@ def send_digest_emails(self, target_date_str: str = None):
     else:
         target_date = timezone.localdate()
 
-    logger.info("[Task] send_digest_emails | date=%s", target_date)
+    logger.info("[Task] send_digest_emails | slot=%s date=%s", slot, target_date)
 
     try:
+        # Flash slots don't need a DailyDigest record — they pull directly from
+        # ArticleEnrichment.
+        if slot != 'morning':
+            result = send_flash_update(slot)
+            logger.info(
+                "[Task] send_digest_emails [%s] done | sent=%d failed=%d articles=%d",
+                slot, result['sent'], result['failed'], result.get('articles_found', 0),
+            )
+            return {'status': 'ok', 'slot': slot, 'date': str(target_date), **result}
+
+        # Morning: full digest from DailyDigest
         digest = DailyDigest.objects.filter(
             digest_date=target_date, is_published=True
         ).first()
 
         if not digest:
             logger.warning(
-                "send_digest_emails: no published digest for %s — skipping", target_date
+                "send_digest_emails [morning]: no published digest for %s — skipping", target_date
             )
             return {'status': 'skipped', 'reason': 'no published digest', 'date': str(target_date)}
 
         result = send_digest_to_all(digest)
         logger.info(
-            "[Task] send_digest_emails done | date=%s sent=%d failed=%d",
+            "[Task] send_digest_emails [morning] done | date=%s sent=%d failed=%d",
             target_date, result['sent'], result['failed'],
         )
-        return {'status': 'ok', 'date': str(target_date), **result}
+        return {'status': 'ok', 'slot': 'morning', 'date': str(target_date), **result}
 
     except Exception as exc:
-        logger.exception("send_digest_emails failed for %s: %s", target_date, exc)
+        logger.exception("send_digest_emails [%s] failed for %s: %s", slot, target_date, exc)
         raise self.retry(exc=exc)

@@ -3,11 +3,15 @@ Management command: send_digest_email
 
 Usage examples
 --------------
-# Send today's digest to all active subscribers (dry-run first):
+# Send today's morning digest to all active subscribers (dry-run first):
     python manage.py send_digest_email --dry-run
 
 # Send for real to all subscribers:
     python manage.py send_digest_email
+
+# Send a flash update for a slot (midday/evening/night):
+    python manage.py send_digest_email --slot midday
+    python manage.py send_digest_email --slot evening --to me@example.com
 
 # Send to a specific test email only (does not touch subscriber records):
     python manage.py send_digest_email --to me@example.com
@@ -32,6 +36,12 @@ class Command(BaseCommand):
     help = 'Send the daily digest email to subscribers (or a test address)'
 
     def add_arguments(self, parser):
+        parser.add_argument(
+            '--slot',
+            choices=['morning', 'midday', 'evening', 'night'],
+            default='morning',
+            help='Which email slot to send (default: morning = full digest)',
+        )
         parser.add_argument(
             '--date',
             metavar='YYYY-MM-DD',
@@ -70,7 +80,42 @@ class Command(BaseCommand):
 
     def handle(self, *args, **options):
         from tnd_apps.newsintelligence.models import DailyDigest, DigestSubscriber
-        from tnd_apps.newsintelligence.email_service import send_digest_to_all, send_digest_to_email
+        from tnd_apps.newsintelligence.email_service import (
+            send_digest_to_all, send_digest_to_email,
+            send_flash_update, send_flash_to_email,
+        )
+
+        slot = options['slot']
+
+        # ── Flash slots: short-circuit before digest lookup ───────────────────
+        if slot != 'morning':
+            if options['to']:
+                self.stdout.write(f'Sending test flash [{slot}] to {options["to"]} ...')
+                if options['dry_run']:
+                    self.stdout.write(self.style.WARNING(f'[DRY RUN] Would send flash [{slot}] to: ' + options['to']))
+                    return
+                ok = send_flash_to_email(slot, options['to'])
+                if ok:
+                    self.stdout.write(self.style.SUCCESS(f'Flash [{slot}] test sent to {options["to"]}'))
+                else:
+                    raise CommandError('Flash test send failed — check logs.')
+                return
+
+            if options['dry_run']:
+                self.stdout.write(self.style.WARNING(f'[DRY RUN] Would send flash [{slot}] to all_day subscribers.'))
+                return
+
+            result = send_flash_update(slot)
+            if result.get('skipped'):
+                self.stdout.write(self.style.WARNING(f'Flash [{slot}] skipped — no qualifying articles found.'))
+            else:
+                self.stdout.write(
+                    self.style.SUCCESS(
+                        f'Flash [{slot}] done — articles={result["articles_found"]} '
+                        f'sent={result["sent"]} failed={result["failed"]}'
+                    )
+                )
+            return
 
         # ── List subscribers ──────────────────────────────────────────────────
         if options['list_subscribers']:

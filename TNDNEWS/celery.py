@@ -75,12 +75,28 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=30, hour=18),
         'kwargs': {'slot': 'night'},
     },
-    # Daily Digest email — fires at 05:35 UTC (08:35 EAT), 5 minutes after the
-    # morning digest generation (05:30 UTC) so the digest is ready to send.
-    # Retries up to 3× with a 2-minute delay if Plunk is temporarily unavailable.
+    # Digest email sends — 5 minutes after each generation slot so the digest/
+    # enrichments are ready before the mailer fires.
+    # EAT = UTC+3:  05:35→08:35, 09:35→12:35, 15:35→18:35, 18:35→21:35
     'send-digest-emails-morning': {
         'task': 'newsintelligence.tasks.send_digest_emails',
         'schedule': crontab(minute=35, hour=5),   # 08:35 EAT
+        'kwargs': {'slot': 'morning'},
+    },
+    'send-digest-emails-midday': {
+        'task': 'newsintelligence.tasks.send_digest_emails',
+        'schedule': crontab(minute=35, hour=9),   # 12:35 EAT
+        'kwargs': {'slot': 'midday'},
+    },
+    'send-digest-emails-evening': {
+        'task': 'newsintelligence.tasks.send_digest_emails',
+        'schedule': crontab(minute=35, hour=15),  # 18:35 EAT
+        'kwargs': {'slot': 'evening'},
+    },
+    'send-digest-emails-night': {
+        'task': 'newsintelligence.tasks.send_digest_emails',
+        'schedule': crontab(minute=35, hour=18),  # 21:35 EAT
+        'kwargs': {'slot': 'night'},
     },
     'build-story-clusters-hourly': {
         'task': 'newsintelligence.tasks.build_story_clusters',
