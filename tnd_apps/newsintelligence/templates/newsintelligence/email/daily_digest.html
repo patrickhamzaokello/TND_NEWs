@@ -6,7 +6,7 @@
   <title>NWITQ News Daily Digest — {{ digest_date }}</title>
   <style>
     body { margin: 0; padding: 0; background: #ffffff; font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; }
-    .wrapper { max-width: 580px; margin: 0 auto; padding: 40px 24px 60px; }
+    .wrapper { max-width: 600px; margin: 0 auto; padding: 40px 24px 60px; }
 
     /* ── Header ── */
     .pub-header { text-align: center; padding-bottom: 36px; border-bottom: 1px solid #e8e8e8; margin-bottom: 44px; }
@@ -32,23 +32,24 @@
     .key-concern .kc-label { font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 2px; text-transform: uppercase; color: #c0392b; margin-bottom: 10px; }
     .key-concern p { font-size: 17px; line-height: 1.75; color: #333; margin: 0; font-style: italic; }
 
-    /* ── Top stories ── */
-    .story { display: table; width: 100%; border-collapse: collapse; margin-bottom: 28px; }
-    .story-text { display: table-cell; vertical-align: top; padding-right: 18px; }
-    .story-text h3 { margin: 0 0 9px; font-size: 19px; line-height: 1.35; color: #111; font-weight: 700; }
-    .story-text p { margin: 0 0 10px; font-size: 15px; line-height: 1.7; color: #555; font-family: Arial, sans-serif; }
+    /* ── Top stories — table layout ── */
+    .story-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+    .story-text-td { vertical-align: top; padding-right: 20px; }
+    .story-text-td h3 { margin: 0 0 10px; font-size: 20px; line-height: 1.35; color: #111; font-weight: 700; }
+    .story-text-td p { margin: 0 0 10px; font-size: 16px; line-height: 1.7; color: #555; font-family: Arial, sans-serif; }
     .story-meta { font-family: Arial, sans-serif; font-size: 13px; color: #bbb; margin-top: 10px; }
     .story-meta a { color: #888; text-decoration: none; border-bottom: 1px solid #ddd; }
-    .story-meta a:hover { color: #111; }
     .story-meta .dot { margin: 0 5px; color: #ddd; }
     .score { color: #c0392b; font-weight: 700; }
-    .story-img-cell { display: table-cell; vertical-align: top; width: 130px; min-width: 130px; }
-    .story-img { width: 130px; height: 95px; object-fit: cover; display: block; border-radius: 4px; }
+
+    /* Image cell — desktop: 200px right column */
+    .story-img-td { vertical-align: top; width: 200px; }
+    .story-img { width: 200px; height: 148px; object-fit: cover; display: block; border-radius: 6px; }
 
     /* ── Under the radar ── */
-    .under-radar-img { width: 100%; height: 220px; object-fit: cover; display: block; border-radius: 4px; margin-bottom: 16px; }
-    .under-radar h3 { font-size: 20px; line-height: 1.35; color: #111; margin: 0 0 10px; }
-    .under-radar p { font-size: 15px; line-height: 1.7; color: #555; font-family: Arial, sans-serif; margin: 0; }
+    .under-radar-img { width: 100%; max-width: 100%; height: auto; min-height: 200px; object-fit: cover; display: block; border-radius: 6px; margin-bottom: 18px; }
+    .under-radar h3 { font-size: 21px; line-height: 1.35; color: #111; margin: 0 0 10px; }
+    .under-radar p { font-size: 16px; line-height: 1.7; color: #555; font-family: Arial, sans-serif; margin: 0; }
 
     /* ── Entities ── */
     .entity-pill { display: inline-block; border: 1px solid #e0e0e0; border-radius: 20px; padding: 5px 14px; margin: 4px 5px 4px 0; font-size: 13px; font-family: Arial, sans-serif; color: #555; }
@@ -56,6 +57,17 @@
     /* ── Footer ── */
     .footer { border-top: 1px solid #ebebeb; margin-top: 56px; padding-top: 28px; font-family: Arial, sans-serif; font-size: 13px; color: #bbb; text-align: center; line-height: 1.9; }
     .footer a { color: #888; text-decoration: underline; }
+
+    /* ── Mobile — stack image below text, go full width ── */
+    @media only screen and (max-width: 600px) {
+      .wrapper { padding: 24px 16px 48px !important; }
+      .pub-title { font-size: 28px !important; }
+      .body-text { font-size: 17px !important; }
+      .story-table { display: block !important; }
+      .story-text-td { display: block !important; width: 100% !important; padding-right: 0 !important; }
+      .story-img-td { display: block !important; width: 100% !important; padding-top: 14px; }
+      .story-img { width: 100% !important; max-width: 100% !important; height: 200px !important; border-radius: 6px; }
+    }
   </style>
 </head>
 <body>
@@ -94,23 +106,25 @@
   {% if top_stories %}
   <p class="section-label">Top Stories</p>
   {% for story in top_stories %}
-  <div class="story">
-    <div class="story-text">
-      <h3>{% if story.article_url %}<a href="{{ story.article_url }}" style="color:#111;text-decoration:none;">{{ story.title }}</a>{% else %}{{ story.title }}{% endif %}</h3>
-      {% if story.why_it_matters %}<p>{{ story.why_it_matters }}</p>{% endif %}
-      <div class="story-meta">
-        {% if story.source_name %}{% if story.source_url %}<a href="{{ story.source_url }}">{{ story.source_name }}</a>{% else %}{{ story.source_name }}{% endif %}{% endif %}
-        {% if story.author_name %}<span class="dot">·</span>{% if story.author_url %}<a href="{{ story.author_url }}">{{ story.author_name }}</a>{% else %}{{ story.author_name }}{% endif %}{% endif %}
-        <span class="dot">·</span> Importance <span class="score">{{ story.importance_score }}/10</span>
-      </div>
-    </div>
-    {% if story.image_url %}
-    <div class="story-img-cell">
-      <img src="{{ story.image_url }}" alt="{{ story.title }}" class="story-img" />
-    </div>
-    {% endif %}
-  </div>
-  {% if not forloop.last %}<hr class="divider" style="margin:20px 0;" />{% endif %}
+  <table class="story-table" cellpadding="0" cellspacing="0" role="presentation">
+    <tr>
+      <td class="story-text-td">
+        <h3>{% if story.article_url %}<a href="{{ story.article_url }}" style="color:#111;text-decoration:none;">{{ story.title }}</a>{% else %}{{ story.title }}{% endif %}</h3>
+        {% if story.why_it_matters %}<p>{{ story.why_it_matters }}</p>{% endif %}
+        <div class="story-meta">
+          {% if story.source_name %}{% if story.source_url %}<a href="{{ story.source_url }}">{{ story.source_name }}</a>{% else %}{{ story.source_name }}{% endif %}{% endif %}
+          {% if story.author_name %}<span class="dot">·</span>{% if story.author_url %}<a href="{{ story.author_url }}">{{ story.author_name }}</a>{% else %}{{ story.author_name }}{% endif %}{% endif %}
+          <span class="dot">·</span> Importance <span class="score">{{ story.importance_score }}/10</span>
+        </div>
+      </td>
+      {% if story.image_url %}
+      <td class="story-img-td" width="200">
+        <img src="{{ story.image_url }}" alt="{{ story.title }}" class="story-img" width="200" />
+      </td>
+      {% endif %}
+    </tr>
+  </table>
+  {% if not forloop.last %}<hr class="divider" style="margin:28px 0;" />{% endif %}
   {% endfor %}
   {% endif %}
 

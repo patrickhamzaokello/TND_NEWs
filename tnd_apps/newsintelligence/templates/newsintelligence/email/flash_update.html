@@ -6,37 +6,49 @@
   <title>NWITQ News {{ slot_label }} Update — {{ digest_date }}</title>
   <style>
     body { margin: 0; padding: 0; background: #ffffff; font-family: Georgia, 'Times New Roman', serif; color: #1a1a1a; }
-    .wrapper { max-width: 580px; margin: 0 auto; padding: 36px 24px 52px; }
+    .wrapper { max-width: 600px; margin: 0 auto; padding: 36px 24px 52px; }
 
     /* ── Header ── */
     .pub-header { text-align: center; padding-bottom: 28px; border-bottom: 1px solid #e8e8e8; margin-bottom: 36px; }
-    .pub-logo { width: 44px; height: 44px; border-radius: 10px; margin: 0 auto 10px; display: block; }
+    .pub-logo { width: 50px; height: 50px; border-radius: 10px; margin: 0 auto 10px; display: block; }
     .pub-name { font-family: Arial, sans-serif; font-size: 12px; font-weight: 700; letter-spacing: 2.5px; text-transform: uppercase; color: #888; margin: 0 0 10px; }
-    .slot-badge { display: inline-block; background: #1a1a1a; color: #fff; font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; padding: 4px 12px; border-radius: 20px; margin-bottom: 14px; }
+    .slot-badge { display: inline-block; background: #1a1a1a; color: #fff; font-family: Arial, sans-serif; font-size: 11px; font-weight: 700; letter-spacing: 1.5px; text-transform: uppercase; padding: 4px 14px; border-radius: 20px; margin-bottom: 14px; }
     .pub-subtitle { font-family: Arial, sans-serif; font-size: 15px; color: #888; margin: 0; }
 
-    /* ── Intro line ── */
-    .intro { font-family: Arial, sans-serif; font-size: 15px; color: #555; line-height: 1.7; margin: 0 0 32px; }
+    /* ── Intro ── */
+    .intro { font-family: Arial, sans-serif; font-size: 16px; color: #555; line-height: 1.7; margin: 0 0 32px; }
 
-    /* ── Article rows ── */
-    .article { display: table; width: 100%; border-collapse: collapse; margin-bottom: 28px; }
-    .article-rank { display: table-cell; vertical-align: top; width: 28px; padding-top: 3px; }
-    .rank-num { font-family: Arial, sans-serif; font-size: 22px; font-weight: 700; color: #e8e8e8; line-height: 1; }
-    .article-body { display: table-cell; vertical-align: top; padding: 0 16px; }
-    .article-body h3 { margin: 0 0 7px; font-size: 18px; line-height: 1.35; color: #111; font-weight: 700; }
-    .article-body p { margin: 0 0 8px; font-size: 14px; line-height: 1.65; color: #555; font-family: Arial, sans-serif; }
-    .article-meta { font-family: Arial, sans-serif; font-size: 12px; color: #bbb; }
+    /* ── Article rows — HTML table for email safety ── */
+    .article-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }
+    .rank-td { vertical-align: top; width: 32px; padding-top: 4px; padding-right: 10px; }
+    .rank-num { font-family: Arial, sans-serif; font-size: 26px; font-weight: 700; color: #e0e0e0; line-height: 1; }
+    .body-td { vertical-align: top; padding-right: 18px; }
+    .body-td h3 { margin: 0 0 8px; font-size: 19px; line-height: 1.35; color: #111; font-weight: 700; }
+    .body-td p { margin: 0 0 8px; font-size: 15px; line-height: 1.65; color: #555; font-family: Arial, sans-serif; }
+    .article-meta { font-family: Arial, sans-serif; font-size: 13px; color: #bbb; }
     .article-meta a { color: #888; text-decoration: none; border-bottom: 1px solid #e8e8e8; }
     .article-meta .dot { margin: 0 5px; color: #ddd; }
     .score { color: #c0392b; font-weight: 700; }
-    .article-img-cell { display: table-cell; vertical-align: top; width: 110px; min-width: 110px; }
-    .article-img { width: 110px; height: 80px; object-fit: cover; display: block; border-radius: 4px; }
 
-    .divider { border: none; border-top: 1px solid #f0f0f0; margin: 24px 0; }
+    /* Image cell — 180px on desktop */
+    .img-td { vertical-align: top; width: 180px; }
+    .article-img { width: 180px; height: 135px; object-fit: cover; display: block; border-radius: 6px; }
+
+    .divider { border: none; border-top: 1px solid #f0f0f0; margin: 28px 0; }
 
     /* ── Footer ── */
     .footer { border-top: 1px solid #ebebeb; margin-top: 48px; padding-top: 24px; font-family: Arial, sans-serif; font-size: 13px; color: #bbb; text-align: center; line-height: 1.9; }
     .footer a { color: #888; text-decoration: underline; }
+
+    /* ── Mobile — stack image below text ── */
+    @media only screen and (max-width: 600px) {
+      .wrapper { padding: 24px 16px 40px !important; }
+      .article-table { display: block !important; }
+      .rank-td { display: block !important; width: auto !important; padding-bottom: 4px; }
+      .body-td { display: block !important; width: 100% !important; padding-right: 0 !important; }
+      .img-td { display: block !important; width: 100% !important; padding-top: 14px; }
+      .article-img { width: 100% !important; max-width: 100% !important; height: 200px !important; border-radius: 6px; }
+    }
   </style>
 </head>
 <body>
@@ -47,7 +59,7 @@
     <img src="https://newsapi.mwonya.com/static/images/nwitq_logo.png" alt="NWITQ News" class="pub-logo" onerror="this.style.display='none'" />
     <p class="pub-name">NWITQ News</p>
     <div class="slot-badge">{{ slot_label }} Update</div>
-    <p class="pub-subtitle">{{ digest_date_display }} &nbsp;·&nbsp; {{ article_count }} new stories</p>
+    <p class="pub-subtitle">{{ digest_date_display }} &nbsp;·&nbsp; {{ article_count }} stories</p>
   </div>
 
   <!-- INTRO -->
@@ -67,31 +79,33 @@
 
   <!-- ARTICLES -->
   {% for article in articles %}
-  <div class="article">
-    <div class="article-rank">
-      <span class="rank-num">{{ forloop.counter }}</span>
-    </div>
-    <div class="article-body">
-      <h3>{% if article.url %}<a href="{{ article.url }}" style="color:#111;text-decoration:none;">{{ article.title }}</a>{% else %}{{ article.title }}{% endif %}</h3>
-      {% if article.summary %}<p>{{ article.summary }}</p>{% endif %}
-      <div class="article-meta">
-        {% if article.source_name %}{% if article.source_url %}<a href="{{ article.source_url }}">{{ article.source_name }}</a>{% else %}{{ article.source_name }}{% endif %}{% endif %}
-        {% if article.author_name %}<span class="dot">·</span>{% if article.author_url %}<a href="{{ article.author_url }}">{{ article.author_name }}</a>{% else %}{{ article.author_name }}{% endif %}{% endif %}
-        <span class="dot">·</span> Importance <span class="score">{{ article.importance_score }}/10</span>
-      </div>
-    </div>
-    {% if article.image_url %}
-    <div class="article-img-cell">
-      <img src="{{ article.image_url }}" alt="{{ article.title }}" class="article-img" />
-    </div>
-    {% endif %}
-  </div>
+  <table class="article-table" cellpadding="0" cellspacing="0" role="presentation">
+    <tr>
+      <td class="rank-td">
+        <span class="rank-num">{{ forloop.counter }}</span>
+      </td>
+      <td class="body-td">
+        <h3>{% if article.url %}<a href="{{ article.url }}" style="color:#111;text-decoration:none;">{{ article.title }}</a>{% else %}{{ article.title }}{% endif %}</h3>
+        {% if article.summary %}<p>{{ article.summary }}</p>{% endif %}
+        <div class="article-meta">
+          {% if article.source_name %}{% if article.source_url %}<a href="{{ article.source_url }}">{{ article.source_name }}</a>{% else %}{{ article.source_name }}{% endif %}{% endif %}
+          {% if article.author_name %}<span class="dot">·</span>{% if article.author_url %}<a href="{{ article.author_url }}">{{ article.author_name }}</a>{% else %}{{ article.author_name }}{% endif %}{% endif %}
+          <span class="dot">·</span> Importance <span class="score">{{ article.importance_score }}/10</span>
+        </div>
+      </td>
+      {% if article.image_url %}
+      <td class="img-td" width="180">
+        <img src="{{ article.image_url }}" alt="{{ article.title }}" class="article-img" width="180" />
+      </td>
+      {% endif %}
+    </tr>
+  </table>
   {% if not forloop.last %}<hr class="divider" />{% endif %}
   {% endfor %}
 
   <!-- FOOTER -->
   <div class="footer">
-    You're receiving this because you subscribed to NWITQ News all-day updates.<br />
+    You're receiving this because you subscribed to NWITQ News updates.<br />
     <a href="{{ unsubscribe_url }}">Unsubscribe</a> &nbsp;·&nbsp; <a href="{{ site_url }}">Read online</a>
   </div>
 

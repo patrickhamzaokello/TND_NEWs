@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.utils import timezone
 from django.utils.html import format_html
 
 from .models import (
@@ -6,6 +7,7 @@ from .models import (
     ArticleClaim,
     ArticleEnrichment,
     DailyDigest,
+    DigestSubscriber,
     Entity,
     EntityMention,
     EnrichmentRun,
@@ -15,6 +17,94 @@ from .models import (
     StoryClusterArticle,
     StoryTimelineEvent,
 )
+
+
+@admin.register(DigestSubscriber)
+class DigestSubscriberAdmin(admin.ModelAdmin):
+    list_display = (
+        'email', 'name', 'frequency', 'is_active', 'confirmed',
+        'emails_sent', 'last_sent_at', 'last_slot_sent', 'subscribed_at',
+    )
+    list_filter = ('frequency', 'is_active', 'confirmed')
+    search_fields = ('email', 'name')
+    ordering = ('-subscribed_at',)
+    readonly_fields = (
+        'unsubscribe_token', 'subscribed_at', 'updated_at',
+        'emails_sent', 'last_sent_at', 'last_digest_date', 'last_slot_sent',
+    )
+    actions = ['activate', 'deactivate', 'confirm_subscribers', 'send_test_morning', 'send_test_evening']
+
+    fieldsets = (
+        ('Subscriber', {
+            'fields': ('email', 'name', 'user'),
+        }),
+        ('Schedule', {
+            'fields': ('frequency', 'is_active', 'confirmed', 'confirmed_at'),
+            'description': (
+                '<b>morning_evening</b> — morning digest + 6 PM roundup (default)<br>'
+                '<b>daily</b> — morning digest only'
+            ),
+        }),
+        ('Delivery history', {
+            'fields': ('emails_sent', 'last_sent_at', 'last_digest_date', 'last_slot_sent'),
+            'classes': ('collapse',),
+        }),
+        ('Token', {
+            'fields': ('unsubscribe_token', 'subscribed_at', 'updated_at'),
+            'classes': ('collapse',),
+        }),
+    )
+
+    # ── Bulk actions ───────────────────────────────────────────────────────────
+
+    @admin.action(description='Activate selected subscribers')
+    def activate(self, request, queryset):
+        updated = queryset.update(is_active=True)
+        self.message_user(request, f'{updated} subscriber(s) activated.')
+
+    @admin.action(description='Deactivate selected subscribers')
+    def deactivate(self, request, queryset):
+        updated = queryset.update(is_active=False)
+        self.message_user(request, f'{updated} subscriber(s) deactivated.')
+
+    @admin.action(description='Mark selected as confirmed')
+    def confirm_subscribers(self, request, queryset):
+        updated = queryset.filter(confirmed=False).update(
+            confirmed=True, confirmed_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} subscriber(s) confirmed.')
+
+    @admin.action(description='Send test morning digest to selected')
+    def send_test_morning(self, request, queryset):
+        from .models import DailyDigest
+        from .email_service import send_digest_to_email
+
+        digest = DailyDigest.objects.filter(
+            digest_date=timezone.localdate(), is_published=True
+        ).first()
+        if not digest:
+            self.message_user(request, "No published digest for today — cannot send morning test.", level='error')
+            return
+
+        sent = failed = 0
+        for sub in queryset:
+            if send_digest_to_email(digest, sub.email):
+                sent += 1
+            else:
+                failed += 1
+        self.message_user(request, f'Morning test: sent={sent} failed={failed}.')
+
+    @admin.action(description='Send test evening roundup to selected')
+    def send_test_evening(self, request, queryset):
+        from .email_service import send_flash_to_email
+
+        sent = failed = 0
+        for sub in queryset:
+            if send_flash_to_email('evening', sub.email):
+                sent += 1
+            else:
+                failed += 1
+        self.message_user(request, f'Evening test: sent={sent} failed={failed}.')
 
 
 @admin.register(ArticleEnrichment)
