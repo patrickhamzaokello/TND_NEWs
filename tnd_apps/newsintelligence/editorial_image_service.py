@@ -98,26 +98,32 @@ def _call_openai_image_edit(png_bytes: bytes) -> bytes:
     Send the PNG to OpenAI gpt-image-1 image edit endpoint.
     Returns the generated image as raw PNG bytes.
     """
+    import base64
     import openai
-    from django.conf import settings
 
     client = openai.OpenAI(api_key=settings.OPENAI_API_KEY, timeout=OPENAI_TIMEOUT)
 
-    # OpenAI expects a file-like tuple: (filename, bytes, mimetype)
+    # gpt-image-1 returns b64_json by default; response_format param not supported
     response = client.images.edit(
         model=EDITORIAL_IMAGE_MODEL,
         image=('source.png', png_bytes, 'image/png'),
         prompt=EDITORIAL_PROMPT,
         n=1,
         size='1024x1024',
-        response_format='b64_json',
     )
 
-    import base64
-    b64 = response.data[0].b64_json
-    if not b64:
-        raise ValueError('OpenAI returned empty image data')
-    return base64.b64decode(b64)
+    item = response.data[0]
+
+    # Prefer b64_json if present, fall back to downloading the URL
+    if getattr(item, 'b64_json', None):
+        return base64.b64decode(item.b64_json)
+
+    if getattr(item, 'url', None):
+        resp = requests.get(item.url, timeout=DOWNLOAD_TIMEOUT)
+        resp.raise_for_status()
+        return resp.content
+
+    raise ValueError('OpenAI returned neither b64_json nor url in image edit response')
 
 
 # ── Public API ────────────────────────────────────────────────────────────────
