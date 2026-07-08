@@ -126,6 +126,17 @@ def _build_context(digest: DailyDigest, subscriber_name: str, unsubscribe_url: s
     else:
         under_radar = None
 
+    # Build absolute illustration URL — ImageField gives a relative media path
+    illustration_url = ''
+    if digest.illustration:
+        try:
+            illustration_url = digest.illustration.url
+            # Ensure it's absolute so email clients can fetch it
+            if illustration_url.startswith('/'):
+                illustration_url = SITE_URL.rstrip('/') + illustration_url
+        except Exception:
+            pass
+
     return {
         'digest_date': str(digest.digest_date),
         'digest_date_display': digest.digest_date.strftime('%A, %d %B %Y'),
@@ -136,6 +147,8 @@ def _build_context(digest: DailyDigest, subscriber_name: str, unsubscribe_url: s
         'trending_entities': (digest.trending_entities or [])[:10],
         'under_radar': under_radar,
         'articles_analyzed': digest.articles_analyzed,
+        'illustration_url': illustration_url,
+        'illustration_caption': digest.illustration_caption or '',
         'unsubscribe_url': unsubscribe_url,
         'site_url': SITE_URL,
     }

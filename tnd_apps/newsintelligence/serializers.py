@@ -69,6 +69,7 @@ def _collect_article_ids(obj: DailyDigest) -> list[int]:
 
 class DailyDigestListSerializer(serializers.ModelSerializer):
     digest_text_excerpt = serializers.SerializerMethodField()
+    illustration_url = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyDigest
@@ -80,6 +81,8 @@ class DailyDigestListSerializer(serializers.ModelSerializer):
             'generated_at',
             'created_at',
             'digest_text_excerpt',
+            'illustration_url',
+            'illustration_caption',
         ]
         read_only_fields = fields
 
@@ -87,6 +90,12 @@ class DailyDigestListSerializer(serializers.ModelSerializer):
         if obj.digest_text:
             return obj.digest_text[:220] + "..." if len(obj.digest_text) > 220 else obj.digest_text
         return ""
+
+    def get_illustration_url(self, obj):
+        if obj.illustration:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.illustration.url) if request else obj.illustration.url
+        return None
 
 
 class DailyDigestDetailSerializer(serializers.ModelSerializer):
@@ -97,6 +106,7 @@ class DailyDigestDetailSerializer(serializers.ModelSerializer):
     top_stories = serializers.SerializerMethodField()
     story_threads = serializers.SerializerMethodField()
     under_radar_story = serializers.SerializerMethodField()
+    illustration_url = serializers.SerializerMethodField()
 
     class Meta:
         model = DailyDigest
@@ -104,6 +114,9 @@ class DailyDigestDetailSerializer(serializers.ModelSerializer):
             'id',
             'digest_date',
             'digest_text',
+            'illustration_url',
+            'illustration_caption',
+            'illustration_generated_at',
             'top_stories',
             'trending_entities',
             'sector_sentiment',
@@ -123,6 +136,12 @@ class DailyDigestDetailSerializer(serializers.ModelSerializer):
             'created_at',
         ]
         read_only_fields = fields
+
+    def get_illustration_url(self, obj):
+        if obj.illustration:
+            request = self.context.get('request')
+            return request.build_absolute_uri(obj.illustration.url) if request else obj.illustration.url
+        return None
 
     def _get_article_map(self, obj) -> dict[int, dict]:
         """

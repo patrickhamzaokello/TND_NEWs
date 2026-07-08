@@ -87,6 +87,16 @@
   <p style="font-family:Arial,sans-serif;font-size:14px;color:#555;margin:0 0 24px;">Good morning, {{ subscriber_name }}.</p>
   {% endif %}
 
+  <!-- ILLUSTRATION -->
+  {% if illustration_url %}
+  <div style="margin-bottom:36px;">
+    <img src="{{ illustration_url }}" alt="Editorial illustration" style="width:100%;max-width:100%;height:auto;display:block;border-radius:6px;" />
+    {% if illustration_caption %}
+    <p style="font-family:Arial,sans-serif;font-size:13px;color:#999;font-style:italic;margin:10px 0 0;text-align:center;line-height:1.5;">{{ illustration_caption }}</p>
+    {% endif %}
+  </div>
+  {% endif %}
+
   <!-- NARRATIVE -->
   <div class="body-text">
     {{ digest_text }}

@@ -140,10 +140,58 @@ def generate_daily_digest(
         refresh_existing = force_refresh and target_date is None
         result = service.run_daily_digest(target_date, force_refresh=refresh_existing)
         result['slot'] = slot
+
+        # Auto-generate digest illustration on morning slot (or backfill runs)
+        # when the digest was freshly created or regenerated.
+        if slot in ('morning', '') and result.get('digest_id'):
+            generate_digest_illustration.apply_async(
+                args=[result['digest_id']],
+                countdown=5,  # small delay so the digest record is committed
+            )
+            logger.info(
+                '[Task] queued digest illustration for digest_id=%d', result['digest_id']
+            )
+
         return result
 
     except Exception as exc:
         logger.exception("generate_daily_digest %s failed: %s", label, exc)
+        raise self.retry(exc=exc)
+
+
+@shared_task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=90,
+    name='newsintelligence.tasks.generate_digest_illustration',
+)
+def generate_digest_illustration(self, digest_id: int) -> dict:
+    """
+    Generate the editorial illustration for a DailyDigest.
+    Triggered automatically after generate_daily_digest completes,
+    and also available as an admin action.
+    """
+    from .models import DailyDigest
+    from .editorial_image_service import generate_digest_illustration as _generate
+
+    logger.info('[Task] generate_digest_illustration | digest_id=%d', digest_id)
+    try:
+        digest = DailyDigest.objects.get(pk=digest_id)
+    except DailyDigest.DoesNotExist:
+        logger.error('generate_digest_illustration: digest %d not found', digest_id)
+        return {'status': 'error', 'reason': 'not_found'}
+
+    try:
+        ok = _generate(digest)
+        return {
+            'status': 'ok' if ok else 'skipped',
+            'digest_id': digest_id,
+            'date': str(digest.digest_date),
+            'image': digest.illustration.name if ok and digest.illustration else None,
+            'caption': digest.illustration_caption if ok else None,
+        }
+    except Exception as exc:
+        logger.exception('generate_digest_illustration failed for digest %d: %s', digest_id, exc)
         raise self.retry(exc=exc)
 
 

@@ -256,6 +256,18 @@ class DailyDigest(models.Model):
     output_tokens_used = models.IntegerField(default=0)
     model_used = models.CharField(max_length=60, blank=True)
 
+    # ── Digest illustration (AI editorial image based on top story) ───────────
+
+    illustration = models.ImageField(
+        upload_to='digest_illustrations/', null=True, blank=True,
+        help_text='AI-generated editorial illustration for this digest',
+    )
+    illustration_caption = models.TextField(
+        blank=True,
+        help_text='One-sentence editorial caption for the illustration',
+    )
+    illustration_generated_at = models.DateTimeField(null=True, blank=True)
+
     # Generation state
     is_published = models.BooleanField(default=False)
     editorial_review_status = models.CharField(

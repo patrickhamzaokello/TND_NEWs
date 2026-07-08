@@ -129,6 +129,185 @@ def _call_openai_image_edit(png_bytes: bytes) -> bytes:
     raise ValueError('OpenAI returned neither b64_json nor url in image edit response')
 
 
+# ── Digest illustration ───────────────────────────────────────────────────────
+
+ILLUSTRATION_PROMPT_TEMPLATE = """Transform this news photograph into a premium modern editorial illustration for today's top story: "{title}".
+
+{base_prompt}
+
+This illustration will appear at the top of a daily news digest. Make it striking, conceptual, and immediately communicative of the story's significance."""
+
+ILLUSTRATION_TEXT_PROMPT_TEMPLATE = """Create a premium modern editorial illustration for a news digest. Today's top story: "{title}". Context: {context}
+
+Visual treatment:
+* Build the entire scene using extremely dense stippling and dot-work as the primary texture
+* Apply fine engraved crosshatching on figures, objects, and surfaces
+* Use high contrast with deep crushed blacks and bright highlights
+* Choose 1–2 bold flat accent colors (examples: vermillion, electric teal, acid yellow, cobalt blue, magenta) against a black-and-white stippled base — apply as sky, background blocks, or a glowing element
+* Alternatively render in full color using only stippling — every area built from dense colored dots, no smooth fills
+* Crisp silhouette edges on subjects
+* Wide landscape composition (16:9) with strong visual hierarchy
+* Clean contemporary finish — no distressed paper or worn texture
+
+Represent the story symbolically or metaphorically — do not depict specific named people.
+Avoid: photorealism, painterly brushwork, watercolor, smooth gradients, CGI, anime, cartoon outlines.
+Style keywords: stippling, dot-work, editorial illustration, engraving, modern magazine art, flat color accent, The Atlantic illustration style."""
+
+CAPTION_SYSTEM = (
+    'You are an editorial caption writer for a premium news digest. '
+    'Write one sentence (max 20 words) that works as an illustration caption — '
+    'evocative, not literal. Do not start with "An illustration of" or "A depiction of". '
+    'Return only the caption text, no quotes.'
+)
+
+
+def _generate_caption(title: str, key_concern: str) -> str:
+    """Generate a short editorial caption using GPT."""
+    from .openai_client import _get_client
+    client = _get_client()
+    user_text = f'Top story: {title}\nKey concern: {key_concern}'
+    resp = client.chat.completions.create(
+        model='gpt-4o-mini',
+        max_completion_tokens=60,
+        messages=[
+            {'role': 'system', 'content': CAPTION_SYSTEM},
+            {'role': 'user', 'content': user_text},
+        ],
+    )
+    return (resp.choices[0].message.content or '').strip()
+
+
+def _call_openai_image_generate(prompt: str) -> bytes:
+    """Text-to-image via gpt-image-1 when no source photo is available."""
+    import base64
+    import openai
+
+    client = openai.OpenAI(api_key=settings.OPENAI_API_KEY, timeout=OPENAI_TIMEOUT)
+    response = client.images.generate(
+        model=EDITORIAL_IMAGE_MODEL,
+        prompt=prompt,
+        n=1,
+        size='1536x1024',
+    )
+    item = response.data[0]
+    if getattr(item, 'b64_json', None):
+        return base64.b64decode(item.b64_json)
+    if getattr(item, 'url', None):
+        resp = requests.get(item.url, timeout=DOWNLOAD_TIMEOUT)
+        resp.raise_for_status()
+        return resp.content
+    raise ValueError('OpenAI returned neither b64_json nor url in image generate response')
+
+
+def generate_digest_illustration(digest) -> bool:
+    """
+    Generate an editorial illustration for a DailyDigest based on its top story.
+
+    Strategy:
+      - If the top story's article has a featured image → img2img editorial transform
+      - Otherwise → text2img using the story title + key concern as the scene brief
+
+    Also generates a one-sentence editorial caption via GPT.
+
+    Returns True on success, False on skip/failure.
+    """
+    top_stories = digest.top_stories or []
+    if not top_stories:
+        logger.warning('generate_digest_illustration: digest %s has no top stories', digest.digest_date)
+        return False
+
+    top = top_stories[0]
+    title = top.get('title', '')
+    article_id = top.get('article_id')
+    key_concern = digest.key_concern or title
+
+    logger.info('Generating digest illustration | date=%s story="%s"', digest.digest_date, title[:60])
+
+    try:
+        # ── Attempt img2img if the article has a featured image ───────────────
+        result_bytes = None
+        if article_id:
+            from tnd_apps.news_scrapping.models import Article
+            try:
+                article = Article.objects.get(pk=article_id)
+                if article.featured_image_url:
+                    raw = _download_image(article.featured_image_url)
+                    png_bytes = _to_png_bytes(raw)
+                    prompt = ILLUSTRATION_PROMPT_TEMPLATE.format(
+                        title=title,
+                        base_prompt=EDITORIAL_PROMPT,
+                    )
+                    result_bytes = _call_openai_image_edit_with_prompt(png_bytes, prompt)
+            except Article.DoesNotExist:
+                pass
+            except Exception as e:
+                logger.warning(
+                    'Digest img2img failed for article %s, falling back to text2img: %s',
+                    article_id, e,
+                )
+
+        # ── Fall back to text2img ─────────────────────────────────────────────
+        if result_bytes is None:
+            context = top.get('why_it_matters') or key_concern
+            prompt = ILLUSTRATION_TEXT_PROMPT_TEMPLATE.format(title=title, context=context)
+            result_bytes = _call_openai_image_generate(prompt)
+
+        # ── Generate caption ──────────────────────────────────────────────────
+        caption = _generate_caption(title, key_concern)
+
+        # ── Save ──────────────────────────────────────────────────────────────
+        filename = f'{digest.digest_date}_{uuid.uuid4().hex[:8]}.png'
+        digest.illustration.save(filename, ContentFile(result_bytes), save=False)
+        digest.illustration_caption = caption
+        digest.illustration_generated_at = timezone.now()
+        digest.save(update_fields=['illustration', 'illustration_caption', 'illustration_generated_at'])
+
+        logger.info(
+            'Digest illustration saved | date=%s caption="%s"',
+            digest.digest_date, caption[:80],
+        )
+        return True
+
+    except Exception as e:
+        import openai as _openai
+        if isinstance(e, _openai.BadRequestError):
+            code = getattr(e, 'code', None) or (e.body or {}).get('code', '')
+            if code == 'moderation_blocked':
+                logger.warning(
+                    'Digest illustration blocked by moderation | date=%s — skipping',
+                    digest.digest_date,
+                )
+                return False
+        logger.exception(
+            'Unexpected error generating digest illustration for %s: %s',
+            digest.digest_date, e,
+        )
+        raise
+
+
+def _call_openai_image_edit_with_prompt(png_bytes: bytes, prompt: str) -> bytes:
+    """img2img with a custom prompt (used for digest illustrations)."""
+    import base64
+    import openai
+
+    client = openai.OpenAI(api_key=settings.OPENAI_API_KEY, timeout=OPENAI_TIMEOUT)
+    response = client.images.edit(
+        model=EDITORIAL_IMAGE_MODEL,
+        image=('source.png', png_bytes, 'image/png'),
+        prompt=prompt,
+        n=1,
+        size='1536x1024',
+    )
+    item = response.data[0]
+    if getattr(item, 'b64_json', None):
+        return base64.b64decode(item.b64_json)
+    if getattr(item, 'url', None):
+        resp = requests.get(item.url, timeout=DOWNLOAD_TIMEOUT)
+        resp.raise_for_status()
+        return resp.content
+    raise ValueError('OpenAI returned neither b64_json nor url')
+
+
 # ── Public API ────────────────────────────────────────────────────────────────
 
 def generate_editorial_image(enrichment) -> bool:

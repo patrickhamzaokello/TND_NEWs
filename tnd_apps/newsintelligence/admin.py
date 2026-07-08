@@ -231,15 +231,66 @@ class EntityMentionAdmin(admin.ModelAdmin):
 class DailyDigestAdmin(admin.ModelAdmin):
     list_display = (
         'digest_date', 'articles_analyzed', 'is_published',
-        'editorial_review_status', 'generated_at', 'token_info'
+        'editorial_review_status', 'has_illustration', 'generated_at', 'token_info',
     )
     list_filter = ('is_published', 'editorial_review_status')
-    readonly_fields = ('generated_at', 'created_at')
+    readonly_fields = (
+        'generated_at', 'created_at',
+        'illustration_preview', 'illustration_generated_at',
+    )
     ordering = ('-digest_date',)
+    actions = ['action_generate_illustration']
+
+    fieldsets = (
+        (None, {
+            'fields': (
+                'digest_date', 'digest_text', 'key_concern',
+                'top_stories', 'under_radar_story', 'trending_entities',
+                'sector_sentiment', 'story_threads', 'citations',
+            ),
+        }),
+        ('Illustration', {
+            'fields': ('illustration', 'illustration_preview', 'illustration_caption', 'illustration_generated_at'),
+        }),
+        ('Publishing', {
+            'fields': ('is_published', 'editorial_review_status', 'reviewed_by', 'reviewed_at'),
+        }),
+        ('Stats', {
+            'fields': ('articles_analyzed', 'input_tokens_used', 'output_tokens_used', 'model_used', 'generated_at', 'created_at'),
+            'classes': ('collapse',),
+        }),
+    )
 
     def token_info(self, obj):
         return f'in:{obj.input_tokens_used:,} out:{obj.output_tokens_used:,}'
     token_info.short_description = 'Tokens'
+
+    def has_illustration(self, obj):
+        if obj.illustration:
+            return format_html('<span style="color:green;font-weight:bold;">✓</span>')
+        return format_html('<span style="color:#ccc;">—</span>')
+    has_illustration.short_description = 'Illus.'
+
+    def illustration_preview(self, obj):
+        if obj.illustration:
+            return format_html(
+                '<img src="{}" style="max-width:100%;max-height:480px;border-radius:6px;" />'
+                '<p style="color:#666;font-size:12px;margin-top:6px;font-style:italic;">{}</p>',
+                obj.illustration.url,
+                obj.illustration_caption or '',
+            )
+        return '(not generated yet)'
+    illustration_preview.short_description = 'Preview'
+
+    @admin.action(description='Generate digest illustration (AI editorial image)')
+    def action_generate_illustration(self, request, queryset):
+        from .tasks import generate_digest_illustration
+
+        queued = 0
+        for digest in queryset:
+            generate_digest_illustration.delay(digest.pk)
+            queued += 1
+        self.message_user(request, f'Queued illustration generation for {queued} digest(s).')
 
 
 @admin.register(Entity)
