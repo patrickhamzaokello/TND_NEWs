@@ -204,8 +204,9 @@ def generate_editorial_images_batch(self, enrichment_ids: list) -> dict:
             if ok:
                 done += 1
             else:
-                skipped += 1
+                skipped += 1  # no image URL, or moderation block
         except Exception as exc:
+            # _generate only re-raises transient errors; log and count as failed
             logger.error('Batch editorial image failed for enrichment %d: %s', e.pk, exc)
             failed += 1
 

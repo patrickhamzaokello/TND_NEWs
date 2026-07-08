@@ -27,26 +27,29 @@ logger = logging.getLogger(__name__)
 
 # ── Prompt ────────────────────────────────────────────────────────────────────
 
-EDITORIAL_PROMPT = """Transform this image into a timeless editorial engraving illustration while preserving the original composition, pose, facial features, and perspective.
-Apply a consistent monochrome visual treatment using:
+EDITORIAL_PROMPT = """Transform this image into a premium modern editorial illustration in the style of high-end magazine art direction — the kind used by The Atlantic, The New Yorker, and Bloomberg Businessweek.
 
-* black and white only (no grayscale tint, no color)
-* extremely high contrast
-* dense stippling and halftone dot shading
-* fine engraved crosshatching
-* vintage woodcut / steel engraving textures
-* newspaper print aesthetic
-* etched line detail across clothing and skin
-* crisp silhouette edges
-* subtle distressed paper grain
-* slightly worn print imperfections
-* soft vignette around the edges
-* cinematic lighting with crushed blacks and bright highlights
+Visual treatment:
+* Render the main subject using extremely dense stippling and dot-work as the primary texture — no smooth gradients, only accumulated dots and marks
+* Apply fine engraved crosshatching and etched line detail on clothing, faces, skin, and surfaces
+* Use high contrast with deep crushed blacks and bright highlights
+* Preserve the original composition, pose, and subject recognisably
 
-The result should feel like a premium editorial illustration printed in an old newspaper or magazine rather than a photograph.
-Keep the subject instantly recognizable.
-Avoid painterly effects, watercolor, digital painting, cartoon styles, anime, oil painting, CGI, photorealistic rendering, or excessive abstraction.
-Style keywords: engraving, stippling, crosshatching, halftone, newsprint, woodcut, editorial illustration, vintage printmaking, monochrome, high contrast."""
+Color direction:
+* Use 1–2 bold flat accent colors (examples: magenta, vermillion orange, electric teal, acid yellow, cobalt blue) against a predominantly black-and-white stippled base
+* Apply flat color as background blocks, sky areas, or as a single glowing element (sun, moon, burst) — not across the whole image
+* The engraved/stippled subject sits against or in front of these flat color areas
+* Alternatively: render the entire scene in full color using only stippling and dot-work — no smooth fills anywhere, every area built from dense colored dots
+
+Composition and finish:
+* Crisp silhouette edges on the subject
+* Flat bold color shapes in background contrast with intricate stippled foreground detail
+* No distressed paper grain or worn texture — keep it clean and contemporary
+* Wide landscape crop (16:9 feel) with breathing room around the subject
+
+Avoid: photorealism, painterly brushwork, watercolor, oil painting, smooth gradients, CGI rendering, anime, cartoon outlines, excessive abstraction, grayscale washes.
+
+Style keywords: stippling, dot-work, editorial illustration, engraving, modern magazine art, flat color accent, halftone, crosshatching, high contrast, The Atlantic illustration style."""
 
 EDITORIAL_IMAGE_MODEL = 'gpt-image-1'
 DOWNLOAD_TIMEOUT = 20   # seconds to download the source image
@@ -109,7 +112,7 @@ def _call_openai_image_edit(png_bytes: bytes) -> bytes:
         image=('source.png', png_bytes, 'image/png'),
         prompt=EDITORIAL_PROMPT,
         n=1,
-        size='1024x1024',
+        size='1536x1024',
     )
 
     item = response.data[0]
@@ -160,8 +163,6 @@ def generate_editorial_image(enrichment) -> bool:
         png_bytes = _to_png_bytes(raw)
         result_bytes = _call_openai_image_edit(png_bytes)
 
-        # Save to the editorial_image ImageField.
-        # Django handles placing it under MEDIA_ROOT/editorial_images/
         filename = f'{article.id}_{uuid.uuid4().hex[:8]}.png'
         enrichment.editorial_image.save(filename, ContentFile(result_bytes), save=False)
         enrichment.editorial_image_generated_at = timezone.now()
@@ -178,6 +179,22 @@ def generate_editorial_image(enrichment) -> bool:
     except ValueError as e:
         logger.error('Image processing error for article %d: %s', article.id, e)
     except Exception as e:
+        import openai as _openai
+        if isinstance(e, _openai.BadRequestError):
+            code = getattr(e, 'code', None) or (e.body or {}).get('code', '')
+            if code == 'moderation_blocked':
+                categories = (
+                    (e.body or {})
+                    .get('error', {})
+                    .get('moderation_details', {})
+                    .get('categories', [])
+                )
+                logger.warning(
+                    'Editorial image blocked by OpenAI moderation | article=%d categories=%s — skipping permanently',
+                    article.id, categories,
+                )
+                return False  # don't retry — moderation won't change
         logger.exception('Unexpected error generating editorial image for article %d: %s', article.id, e)
+        raise  # re-raise so Celery can retry transient errors
 
     return False
