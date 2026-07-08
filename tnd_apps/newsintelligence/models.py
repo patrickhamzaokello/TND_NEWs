@@ -125,6 +125,14 @@ class ArticleEnrichment(models.Model):
         default=False, help_text="AI thinks this warrants a breaking news flag"
     )
 
+    # ── Editorial image (AI-generated engraving style) ────────────────────────
+
+    editorial_image = models.ImageField(
+        upload_to='editorial_images/', null=True, blank=True,
+        help_text='AI-generated editorial engraving version of the featured image',
+    )
+    editorial_image_generated_at = models.DateTimeField(null=True, blank=True)
+
     # ── Token tracking (for cost monitoring) ─────────────────────────────────
 
     input_tokens_used = models.IntegerField(default=0)

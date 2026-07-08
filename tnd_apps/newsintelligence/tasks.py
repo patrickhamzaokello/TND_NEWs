@@ -147,6 +147,75 @@ def generate_daily_digest(
         raise self.retry(exc=exc)
 
 
+@shared_task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=60,
+    name='newsintelligence.tasks.generate_editorial_image',
+)
+def generate_editorial_image(self, enrichment_id: int) -> dict:
+    """
+    Generate an AI editorial engraving image for a single ArticleEnrichment.
+    Triggered on-demand (admin action or API call) — not scheduled.
+    """
+    from .models import ArticleEnrichment
+    from .editorial_image_service import generate_editorial_image as _generate
+
+    logger.info('[Task] generate_editorial_image | enrichment_id=%d', enrichment_id)
+    try:
+        enrichment = ArticleEnrichment.objects.select_related('article').get(pk=enrichment_id)
+    except ArticleEnrichment.DoesNotExist:
+        logger.error('generate_editorial_image: enrichment %d not found', enrichment_id)
+        return {'status': 'error', 'reason': 'not_found'}
+
+    try:
+        ok = _generate(enrichment)
+        return {
+            'status': 'ok' if ok else 'skipped',
+            'enrichment_id': enrichment_id,
+            'image': enrichment.editorial_image.name if ok else None,
+        }
+    except Exception as exc:
+        logger.exception('generate_editorial_image task failed for %d: %s', enrichment_id, exc)
+        raise self.retry(exc=exc)
+
+
+@shared_task(
+    bind=True,
+    max_retries=1,
+    name='newsintelligence.tasks.generate_editorial_images_batch',
+)
+def generate_editorial_images_batch(self, enrichment_ids: list) -> dict:
+    """
+    Generate editorial images for a list of enrichment IDs in sequence.
+    Used by the admin bulk action to avoid blocking the request thread.
+    """
+    from .editorial_image_service import generate_editorial_image as _generate
+    from .models import ArticleEnrichment
+
+    enrichments = ArticleEnrichment.objects.filter(
+        pk__in=enrichment_ids
+    ).select_related('article')
+
+    done = failed = skipped = 0
+    for e in enrichments:
+        try:
+            ok = _generate(e)
+            if ok:
+                done += 1
+            else:
+                skipped += 1
+        except Exception as exc:
+            logger.error('Batch editorial image failed for enrichment %d: %s', e.pk, exc)
+            failed += 1
+
+    logger.info(
+        '[Task] generate_editorial_images_batch done | done=%d skipped=%d failed=%d',
+        done, skipped, failed,
+    )
+    return {'done': done, 'skipped': skipped, 'failed': failed}
+
+
 @shared_task(name='newsintelligence.tasks.build_story_clusters')
 def build_story_clusters(days: int = 7):
     from django.core.management import call_command

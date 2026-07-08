@@ -111,18 +111,21 @@ class DigestSubscriberAdmin(admin.ModelAdmin):
 class ArticleEnrichmentAdmin(admin.ModelAdmin):
     list_display = (
         'article_title', 'status', 'sentiment', 'importance_score',
-        'follow_up_worthy', 'controversy_flag', 'analyzed_at', 'token_cost'
+        'follow_up_worthy', 'controversy_flag', 'has_editorial_image',
+        'analyzed_at', 'token_cost',
     )
     list_filter = (
         'status', 'sentiment', 'follow_up_worthy',
-        'controversy_flag', 'is_breaking_candidate'
+        'controversy_flag', 'is_breaking_candidate',
     )
     search_fields = ('article__title', 'summary')
     readonly_fields = (
         'article', 'analyzed_at', 'input_tokens_used',
-        'output_tokens_used', 'model_used', 'created_at', 'updated_at'
+        'output_tokens_used', 'model_used', 'created_at', 'updated_at',
+        'editorial_image_preview', 'editorial_image_generated_at',
     )
     ordering = ('-analyzed_at',)
+    actions = ['action_generate_editorial_images']
 
     fieldsets = (
         ('Article', {'fields': ('article', 'status', 'error_message', 'retry_count')}),
@@ -145,6 +148,14 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
         ('Flags', {
             'fields': ('follow_up_worthy', 'controversy_flag', 'is_breaking_candidate'),
         }),
+        ('Editorial Image', {
+            'fields': ('editorial_image', 'editorial_image_preview', 'editorial_image_generated_at'),
+            'description': (
+                'AI-generated engraving-style image. '
+                'Use the <b>Generate editorial images</b> action on the list view to create one, '
+                'or upload your own image here.'
+            ),
+        }),
         ('Metadata', {
             'fields': ('input_tokens_used', 'output_tokens_used', 'model_used', 'analyzed_at'),
             'classes': ('collapse',),
@@ -164,6 +175,48 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
         )
         return f'${cost:.5f}'
     token_cost.short_description = 'Est. Cost'
+
+    def has_editorial_image(self, obj):
+        if obj.editorial_image:
+            return format_html('<span style="color:green;font-weight:bold;">✓</span>')
+        return format_html('<span style="color:#ccc;">—</span>')
+    has_editorial_image.short_description = 'Editorial img'
+
+    def editorial_image_preview(self, obj):
+        if obj.editorial_image:
+            return format_html(
+                '<img src="{}" style="max-width:400px;max-height:400px;border-radius:4px;" />',
+                obj.editorial_image.url,
+            )
+        return '(not generated yet)'
+    editorial_image_preview.short_description = 'Preview'
+
+    @admin.action(description='Generate editorial images (AI engraving) for selected articles')
+    def action_generate_editorial_images(self, request, queryset):
+        from .tasks import generate_editorial_images_batch
+
+        # Filter to enrichments that have a source image
+        ids = list(
+            queryset.filter(
+                article__featured_image_url__gt='',
+            ).values_list('pk', flat=True)
+        )
+        no_image = queryset.count() - len(ids)
+
+        if not ids:
+            self.message_user(
+                request,
+                'None of the selected articles have a featured image — cannot generate.',
+                level='warning',
+            )
+            return
+
+        generate_editorial_images_batch.delay(ids)
+
+        msg = f'Queued editorial image generation for {len(ids)} article(s).'
+        if no_image:
+            msg += f' {no_image} skipped (no featured image).'
+        self.message_user(request, msg)
 
 
 @admin.register(EntityMention)
