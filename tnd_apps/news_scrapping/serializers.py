@@ -90,6 +90,11 @@ class ArticleSerializer(ArticleListSerializer):
         read_only=True,
         default=list,
     )
+    key_highlights = serializers.JSONField(
+        source='enrichment.key_highlights',
+        read_only=True,
+        default=list,
+    )
 
     class Meta:
         model = Article
@@ -97,6 +102,7 @@ class ArticleSerializer(ArticleListSerializer):
             'external_id', 'url', 'canonical_url', 'content', 'word_count',
             'paragraph_count', 'image_caption', 'author', 'tags',
             'claims', 'citations', 'local_impact', 'bias_or_framing_notes',
+            'key_highlights',
         ]
 
 

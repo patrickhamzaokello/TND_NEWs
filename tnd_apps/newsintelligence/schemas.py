@@ -7,6 +7,9 @@ wrong primitive types, invalid article IDs, unsupported enums, and malformed
 citations.
 """
 
+VALID_HIGHLIGHT_TYPES = {'fact', 'figure', 'claim', 'link'}
+
+
 VALID_THEMES = {
     'governance', 'education', 'health', 'economy', 'entertainment', 'sports',
     'crime', 'environment', 'technology', 'politics', 'social', 'business',
@@ -63,6 +66,7 @@ def validate_article_analysis(data, article):
         if isinstance(data.get('bias_or_framing_notes'), list)
         else []
     )
+    data['key_highlights'] = _normalize_highlights(data.get('key_highlights'))
     return data
 
 
@@ -104,6 +108,35 @@ def _normalize_claims(claims, default_article_id):
             'confidence': float(_coerce_score(claim.get('confidence', 0.5), 0.0, 1.0, 'confidence')),
         })
     return normalized
+
+
+def _normalize_highlights(highlights) -> list:
+    """
+    Validate and clean key_highlights from the LLM.
+    Each item must have a non-empty 'text' and a valid 'type'.
+    The 'url' key is optional and only kept for link-type highlights.
+    """
+    if not isinstance(highlights, list):
+        return []
+    result = []
+    seen_texts = set()
+    for item in highlights[:8]:  # cap at 8 highlights per article
+        if not isinstance(item, dict):
+            continue
+        text = str(item.get('text', '')).strip()
+        h_type = str(item.get('type', '')).strip().lower()
+        if not text or h_type not in VALID_HIGHLIGHT_TYPES:
+            continue
+        if text in seen_texts:
+            continue  # deduplicate
+        seen_texts.add(text)
+        entry = {'text': text, 'type': h_type}
+        if h_type == 'link' and item.get('url'):
+            url = str(item['url']).strip()
+            if url.startswith('http'):
+                entry['url'] = url
+        result.append(entry)
+    return result
 
 
 def _normalize_citations(citations, valid_article_ids, article=None):

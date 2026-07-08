@@ -132,7 +132,7 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
         ('AI Analysis', {
             'fields': (
                 'summary', 'sentiment', 'sentiment_score', 'importance_score',
-                'themes', 'key_facts', 'claims', 'citations',
+                'themes', 'key_facts', 'key_highlights', 'claims', 'citations',
                 'local_impact', 'bias_or_framing_notes', 'related_themes',
             )
         }),

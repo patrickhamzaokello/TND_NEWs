@@ -64,6 +64,14 @@ class ArticleEnrichment(models.Model):
         default=list, blank=True,
         help_text="Bullet-point facts extracted from the article"
     )
+    key_highlights = models.JSONField(
+        default=list, blank=True,
+        help_text=(
+            'Phrases from the article body that clients should underline. '
+            'Each item: {text, type, url?} where type is '
+            'fact | figure | claim | link'
+        ),
+    )
     claims = models.JSONField(
         default=list, blank=True,
         help_text="Grounded claims with evidence and confidence"

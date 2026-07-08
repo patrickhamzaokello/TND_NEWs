@@ -136,10 +136,29 @@ Return this exact JSON structure:
     "youth": <float 0.0-1.0>
   }},
 
+  "key_highlights": [
+    {{
+      "text": "<exact phrase or sentence copied verbatim from the article — must appear word-for-word in the article content above>",
+      "type": "fact|figure|claim|link",
+      "url": "<URL string if type is link and the article references a specific source or document — otherwise omit this key>"
+    }}
+  ],
+
   "follow_up_worthy": <true|false>,
   "controversy_flag": <true|false>,
   "is_breaking_candidate": <true|false>
 }}
+
+KEY HIGHLIGHTS RULES — these power the underline annotations shown to readers:
+  - Copy phrases VERBATIM from the article — exact substring match is required for clients to locate them
+  - Pick 3–6 phrases that a reader skimming the article should not miss
+  - Types:
+      fact   : a stated fact or event ("Parliament rejected the motion", "prices rose by 40%")
+      figure : a specific number, date, or amount ("UGX 4.3 trillion", "12 people", "by 2027")
+      claim  : something attributed to a named person that is not yet verified ("Museveni said the project will complete by December")
+      link   : a phrase that references an external document, report, or URL cited in the article
+  - Do NOT highlight generic phrases, conjunctions, or filler
+  - If the article is short (<200 words), return 2–3 highlights only
 
 Themes — choose 1–4, most specific first:
 governance, education, health, economy, entertainment, sports, crime, environment,

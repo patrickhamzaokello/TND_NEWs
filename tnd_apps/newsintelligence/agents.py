@@ -150,6 +150,7 @@ class ArticleAnalysisAgent:
         enrichment.importance_score = data.get('importance_score')
         enrichment.themes           = data.get('themes', [])
         enrichment.key_facts        = data.get('key_facts', [])
+        enrichment.key_highlights   = data.get('key_highlights', [])
         enrichment.claims           = data.get('claims', [])
         enrichment.citations        = data.get('citations', [])
         enrichment.local_impact     = data.get('local_impact', {})
