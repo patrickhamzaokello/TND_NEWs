@@ -257,6 +257,11 @@ class DailyDigest(models.Model):
         blank=True,
         help_text="One data point that should concern decision-makers"
     )
+    key_concern_short = models.CharField(
+        max_length=200,
+        blank=True,
+        help_text="Tweet-sized version of key_concern (≤180 chars, complete sentence)"
+    )
 
     # Stats for this digest
     articles_analyzed = models.IntegerField(default=0)

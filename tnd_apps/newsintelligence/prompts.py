@@ -274,7 +274,9 @@ Return this exact JSON structure:
     "reason": "<Why this matters more than the coverage it is getting — who is affected, what is at stake, why editors likely buried it>"
   }},
 
-  "key_concern": "<The most important signal from today's news for Ugandans. Be specific: name the risk or opportunity, the people involved, and the likely timeline. Not 'the economy faces challenges' — something like: 'URA is on track to miss its FY2025 revenue target by over 15%, which will likely trigger a mid-year budget cut affecting health and education spending in Q3.'>"
+  "key_concern": "<The most important signal from today's news for Ugandans. Be specific: name the risk or opportunity, the people involved, and the likely timeline. Not 'the economy faces challenges' — something like: 'URA is on track to miss its FY2025 revenue target by over 15%, which will likely trigger a mid-year budget cut affecting health and education spending in Q3.' Write 1–2 complete sentences only. Each sentence must end with a full stop.>",
+
+  "key_concern_short": "<A punchy 1-sentence version of key_concern for social media. Maximum 180 characters. Must be a complete sentence ending with a full stop. Example: 'Parliament corruption arrests widen — Obore's fall signals a systemic crackdown that could reshape political alliances before 2026 elections.'>"
 }}
 
 RULES:

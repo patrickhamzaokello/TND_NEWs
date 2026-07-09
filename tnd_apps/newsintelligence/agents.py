@@ -414,6 +414,7 @@ class DailyDigestAgent:
         digest.citations         = data.get('citations', [])
         digest.under_radar_story = data.get('under_radar_story', {})
         digest.key_concern       = data.get('key_concern', '')
+        digest.key_concern_short = data.get('key_concern_short', '')[:200]
 
         digest.articles_analyzed  = len(enrichments)
         digest.input_tokens_used  = meta.get('input_tokens', 0)

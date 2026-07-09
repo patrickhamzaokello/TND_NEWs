@@ -88,20 +88,47 @@ def _trim_to_sentence(text: str, max_len: int) -> str:
     """
     Trim to max_len cutting at the last sentence boundary (. ! ?) before the
     limit. Falls back to a word boundary with ellipsis if no sentence end found.
-    Never cuts mid-word or mid-sentence.
     """
     if len(text) <= max_len:
         return text
     chunk = text[:max_len]
-    # Walk back up to 120 chars looking for sentence-ending punctuation
     for i in range(len(chunk) - 1, max(0, len(chunk) - 120), -1):
         if chunk[i] in '.!?' and (i + 1 >= len(chunk) or chunk[i + 1] in ' \n'):
             return chunk[:i + 1].rstrip()
-    # Fall back to word boundary
     last_space = chunk.rfind(' ')
     if last_space > 0:
         return chunk[:last_space].rstrip() + '…'
     return chunk.rstrip() + '…'
+
+
+def _first_sentences(text: str, max_len: int, n: int = 2) -> str:
+    """
+    Return the first n complete sentences from text.
+    If even the first sentence exceeds max_len, trims at word boundary.
+    """
+    sentences = []
+    remaining = text.strip()
+    while remaining and len(sentences) < n:
+        # Find next sentence boundary
+        end = -1
+        for i, ch in enumerate(remaining):
+            if ch in '.!?' and (i + 1 >= len(remaining) or remaining[i + 1] in ' \n'):
+                end = i
+                break
+        if end == -1:
+            # No sentence end found — treat rest as one sentence
+            sentences.append(remaining.strip())
+            break
+        sentences.append(remaining[:end + 1].strip())
+        remaining = remaining[end + 1:].strip()
+
+    result = ' '.join(sentences)
+    if len(result) <= max_len:
+        return result
+    # Trim at word boundary as last resort
+    chunk = result[:max_len]
+    last_space = chunk.rfind(' ')
+    return (chunk[:last_space].rstrip() if last_space > 0 else chunk.rstrip()) + '…'
 
 
 def _story_tweet(index: int, story: dict) -> str:
@@ -166,13 +193,12 @@ def _build_thread(digest) -> list[str]:
     tweets = []
 
     # ── Tweet 1: opener ───────────────────────────────────────────────────────
-    key_concern = digest.key_concern or ''
-    concern_budget = TWEET_MAX - len(date_str) - len(HASHTAGS) - 30
-    concern_excerpt = _trim_to_sentence(key_concern, concern_budget)
+    narrative_budget = TWEET_MAX - len(date_str) - len(HASHTAGS) - 30
+    narrative = _first_sentences(digest.digest_text or '', narrative_budget, n=2)
 
     opener = (
         f'🗞 Uganda Daily Brief — {date_str}\n\n'
-        f'{concern_excerpt}\n\n'
+        f'{narrative}\n\n'
         f'{HASHTAGS}'
     )
     tweets.append(opener)
@@ -192,13 +218,18 @@ def _build_thread(digest) -> list[str]:
         footer = f'\n\n📖 Full brief → {link}'
         body_budget = TWEET_MAX - len(footer) - len('👁 Under the radar\n\n') - 10
         if len(u_title) + 2 + len(u_reason) <= body_budget:
+            # Both fit — include reason
             body = f'{u_title}\n{u_reason}'
-        elif len(u_title) + 2 <= body_budget:
-            # Title fits; trim reason at sentence boundary
-            remaining = body_budget - len(u_title) - 2
-            body = f'{u_title}\n{_trim_to_sentence(u_reason, remaining)}'
+        elif u_reason:
+            # Try fitting just the first sentence of the reason
+            first = _first_sentences(u_reason, body_budget - len(u_title) - 2, n=1)
+            if len(u_title) + 2 + len(first) <= body_budget and not first.endswith('…'):
+                body = f'{u_title}\n{first}'
+            else:
+                # Reason doesn't fit cleanly — title only
+                body = u_title
         else:
-            body = _trim_to_sentence(u_title, body_budget)
+            body = u_title
         tweets.append(f'👁 Under the radar\n\n{body}{footer}')
     else:
         tweets.append(f'📖 Read the full brief → {link}')
