@@ -193,12 +193,16 @@ def _build_thread(digest) -> list[str]:
     tweets = []
 
     # ── Tweet 1: opener ───────────────────────────────────────────────────────
-    narrative_budget = TWEET_MAX - len(date_str) - len(HASHTAGS) - 30
-    narrative = _first_sentences(digest.digest_text or '', narrative_budget, n=2)
+    # Use the AI-generated short hook (≤180 chars, complete sentence).
+    # Fall back to key_concern if key_concern_short isn't populated yet.
+    hook = (digest.key_concern_short or digest.key_concern or '').strip()
+    hook_budget = TWEET_MAX - len(date_str) - len(HASHTAGS) - 30
+    if len(hook) > hook_budget:
+        hook = _first_sentences(hook, hook_budget, n=1)
 
     opener = (
         f'🗞 Uganda Daily Brief — {date_str}\n\n'
-        f'{narrative}\n\n'
+        f'{hook}\n\n'
         f'{HASHTAGS}'
     )
     tweets.append(opener)
