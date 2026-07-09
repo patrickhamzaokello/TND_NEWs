@@ -118,6 +118,7 @@ python-dotenv==1.1.1
 python-multipart==0.0.20
 python-rest-client==0.3
 python-twitter==3.5
+tweepy==4.15.0
 pytz==2025.2
 PyYAML==6.0.2
 redis==6.4.0
