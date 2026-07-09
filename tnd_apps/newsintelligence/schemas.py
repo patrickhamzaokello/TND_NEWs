@@ -71,24 +71,40 @@ def validate_article_analysis(data, article):
 
 
 def validate_daily_digest(data, valid_article_ids):
+    import logging
+    _log = logging.getLogger(__name__)
+
     valid_ids = {int(article_id) for article_id in valid_article_ids}
     _require(data, 'digest_text', str)
     _require(data, 'top_stories', list)
     _require(data, 'sector_sentiment', dict)
 
+    # Filter out hallucinated article IDs rather than hard-failing the digest.
+    valid_stories = []
     for story in data.get('top_stories', []):
         article_id = story.get('article_id')
         if article_id not in valid_ids:
-            raise ValueError(f"Digest referenced unknown top_stories article_id={article_id}")
+            _log.warning('Digest: dropping top_story with unknown article_id=%s', article_id)
+        else:
+            valid_stories.append(story)
+    data['top_stories'] = valid_stories
 
+    valid_threads = []
     for thread in data.get('story_threads', []) or []:
-        article_ids = thread.get('article_ids', [])
-        if any(article_id not in valid_ids for article_id in article_ids):
-            raise ValueError(f"Digest story thread referenced unknown article IDs: {article_ids}")
+        bad = [aid for aid in thread.get('article_ids', []) if aid not in valid_ids]
+        if bad:
+            _log.warning('Digest: dropping story_thread with unknown article_ids=%s', bad)
+        else:
+            valid_threads.append(thread)
+    data['story_threads'] = valid_threads
 
     under_radar = data.get('under_radar_story') or {}
     if under_radar and under_radar.get('article_id') not in valid_ids:
-        raise ValueError(f"Digest referenced unknown under_radar_story article_id={under_radar.get('article_id')}")
+        _log.warning(
+            'Digest: clearing under_radar_story with unknown article_id=%s',
+            under_radar.get('article_id'),
+        )
+        data['under_radar_story'] = {}
 
     data['citations'] = _normalize_citations(data.get('citations'), valid_ids)
     return data
