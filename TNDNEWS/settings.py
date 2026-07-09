@@ -306,6 +306,13 @@ DIGEST_FROM_EMAIL = config('DIGEST_FROM_EMAIL', default=DEFAULT_FROM_EMAIL)
 DIGEST_SITE_URL = config('DIGEST_SITE_URL', default='https://newsapi.mwonya.com')
 DIGEST_UNSUBSCRIBE_URL = config('DIGEST_UNSUBSCRIBE_URL', default='https://newsapi.mwonya.com/digest/unsubscribe')
 
+# Twitter / X API — OAuth 1.0a credentials for posting as the NWITQ account
+# Get these from https://developer.twitter.com/en/portal/dashboard
+TWITTER_API_KEY            = config('TWITTER_API_KEY', default='')
+TWITTER_API_SECRET         = config('TWITTER_API_SECRET', default='')
+TWITTER_ACCESS_TOKEN       = config('TWITTER_ACCESS_TOKEN', default='')
+TWITTER_ACCESS_TOKEN_SECRET = config('TWITTER_ACCESS_TOKEN_SECRET', default='')
+
 NOTIFICATION_SERVICE_URL = config(
     'NOTIFICATION_SERVICE_URL',
     default='http://notification-service:4000/api/push-notification'

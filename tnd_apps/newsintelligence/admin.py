@@ -231,15 +231,16 @@ class EntityMentionAdmin(admin.ModelAdmin):
 class DailyDigestAdmin(admin.ModelAdmin):
     list_display = (
         'digest_date', 'articles_analyzed', 'is_published',
-        'editorial_review_status', 'has_illustration', 'generated_at', 'token_info',
+        'editorial_review_status', 'has_illustration', 'twitter_status', 'generated_at', 'token_info',
     )
     list_filter = ('is_published', 'editorial_review_status')
     readonly_fields = (
         'generated_at', 'created_at',
         'illustration_preview', 'illustration_generated_at',
+        'twitter_posted_at', 'twitter_thread_link',
     )
     ordering = ('-digest_date',)
-    actions = ['action_generate_illustration']
+    actions = ['action_generate_illustration', 'action_post_to_twitter']
 
     fieldsets = (
         (None, {
@@ -255,6 +256,9 @@ class DailyDigestAdmin(admin.ModelAdmin):
         ('Publishing', {
             'fields': ('is_published', 'editorial_review_status', 'reviewed_by', 'reviewed_at'),
         }),
+        ('Social — Twitter / X', {
+            'fields': ('twitter_thread_id', 'twitter_posted_at', 'twitter_thread_link'),
+        }),
         ('Stats', {
             'fields': ('articles_analyzed', 'input_tokens_used', 'output_tokens_used', 'model_used', 'generated_at', 'created_at'),
             'classes': ('collapse',),
@@ -264,6 +268,13 @@ class DailyDigestAdmin(admin.ModelAdmin):
     def token_info(self, obj):
         return f'in:{obj.input_tokens_used:,} out:{obj.output_tokens_used:,}'
     token_info.short_description = 'Tokens'
+
+    def twitter_status(self, obj):
+        if obj.twitter_thread_id:
+            url = f'https://x.com/i/web/status/{obj.twitter_thread_id}'
+            return format_html('<a href="{}" target="_blank" style="color:green;font-weight:bold;">✓ posted</a>', url)
+        return format_html('<span style="color:#ccc;">—</span>')
+    twitter_status.short_description = 'Twitter'
 
     def has_illustration(self, obj):
         if obj.illustration:
@@ -281,6 +292,33 @@ class DailyDigestAdmin(admin.ModelAdmin):
             )
         return '(not generated yet)'
     illustration_preview.short_description = 'Preview'
+
+    def twitter_thread_link(self, obj):
+        if obj.twitter_thread_id:
+            url = f'https://x.com/i/web/status/{obj.twitter_thread_id}'
+            return format_html('<a href="{}" target="_blank">View thread ↗</a>', url)
+        return '(not posted yet)'
+    twitter_thread_link.short_description = 'Thread link'
+
+    @admin.action(description='Post selected digests to Twitter / X as a thread')
+    def action_post_to_twitter(self, request, queryset):
+        from .tasks import post_digest_to_twitter
+
+        queued = skipped = 0
+        for digest in queryset:
+            if digest.twitter_thread_id:
+                skipped += 1
+                continue
+            if not digest.is_published:
+                skipped += 1
+                continue
+            post_digest_to_twitter.delay(digest.pk)
+            queued += 1
+
+        msg = f'Queued {queued} digest(s) for Twitter posting.'
+        if skipped:
+            msg += f' {skipped} skipped (already posted or not published).'
+        self.message_user(request, msg)
 
     @admin.action(description='Generate digest illustration (AI editorial image)')
     def action_generate_illustration(self, request, queryset):

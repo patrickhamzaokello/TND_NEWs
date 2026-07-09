@@ -276,6 +276,13 @@ class DailyDigest(models.Model):
     )
     illustration_generated_at = models.DateTimeField(null=True, blank=True)
 
+    # ── Social posting ────────────────────────────────────────────────────────
+    twitter_thread_id = models.CharField(
+        max_length=32, blank=True,
+        help_text='Tweet ID of the first tweet in the posted thread',
+    )
+    twitter_posted_at = models.DateTimeField(null=True, blank=True)
+
     # Generation state
     is_published = models.BooleanField(default=False)
     editorial_review_status = models.CharField(

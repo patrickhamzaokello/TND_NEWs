@@ -161,6 +161,35 @@ def generate_daily_digest(
 
 @shared_task(
     bind=True,
+    max_retries=3,
+    default_retry_delay=120,
+    name='newsintelligence.tasks.post_digest_to_twitter',
+)
+def post_digest_to_twitter(self, digest_id: int) -> dict:
+    """
+    Post the daily digest as a Twitter thread.
+    Triggered automatically after the morning email send completes,
+    and available as an admin action for manual posting.
+    """
+    from .models import DailyDigest
+    from .twitter_service import post_digest_thread
+
+    logger.info('[Task] post_digest_to_twitter | digest_id=%d', digest_id)
+    try:
+        digest = DailyDigest.objects.get(pk=digest_id)
+    except DailyDigest.DoesNotExist:
+        logger.error('post_digest_to_twitter: digest %d not found', digest_id)
+        return {'status': 'error', 'reason': 'not_found'}
+
+    try:
+        return post_digest_thread(digest)
+    except Exception as exc:
+        logger.exception('post_digest_to_twitter failed for digest %d: %s', digest_id, exc)
+        raise self.retry(exc=exc)
+
+
+@shared_task(
+    bind=True,
     max_retries=2,
     default_retry_delay=90,
     name='newsintelligence.tasks.generate_digest_illustration',
@@ -342,6 +371,10 @@ def send_digest_emails(self, target_date_str: str = None, slot: str = 'morning')
             "[Task] send_digest_emails [morning] done | date=%s sent=%d failed=%d",
             target_date, result['sent'], result['failed'],
         )
+
+        # Auto-post to Twitter after emails go out
+        post_digest_to_twitter.apply_async(args=[digest.pk], countdown=30)
+
         return {'status': 'ok', 'slot': 'morning', 'date': str(target_date), **result}
 
     except Exception as exc:
