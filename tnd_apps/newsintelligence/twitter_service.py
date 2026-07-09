@@ -84,6 +84,26 @@ def _trim(text: str, max_len: int, suffix: str = '…') -> str:
     return text[:max_len - len(suffix)].rstrip() + suffix
 
 
+def _trim_to_sentence(text: str, max_len: int) -> str:
+    """
+    Trim to max_len cutting at the last sentence boundary (. ! ?) before the
+    limit. Falls back to a word boundary with ellipsis if no sentence end found.
+    Never cuts mid-word or mid-sentence.
+    """
+    if len(text) <= max_len:
+        return text
+    chunk = text[:max_len]
+    # Walk back up to 120 chars looking for sentence-ending punctuation
+    for i in range(len(chunk) - 1, max(0, len(chunk) - 120), -1):
+        if chunk[i] in '.!?' and (i + 1 >= len(chunk) or chunk[i + 1] in ' \n'):
+            return chunk[:i + 1].rstrip()
+    # Fall back to word boundary
+    last_space = chunk.rfind(' ')
+    if last_space > 0:
+        return chunk[:last_space].rstrip() + '…'
+    return chunk.rstrip() + '…'
+
+
 def _story_tweet(index: int, story: dict) -> str:
     """
     Format a single top story as a tweet.
@@ -107,9 +127,9 @@ def _story_tweet(index: int, story: dict) -> str:
         body = f'{title}\n{why}'
     elif len(title) + 2 <= body_budget:
         remaining = body_budget - len(title) - 2
-        body = f'{title}\n{_trim(why, remaining)}'
+        body = f'{title}\n{_trim_to_sentence(why, remaining)}'
     else:
-        body = _trim(title, body_budget)
+        body = _trim_to_sentence(title, body_budget)
 
     return f'{prefix} {body}{footer}'
 
@@ -148,7 +168,7 @@ def _build_thread(digest) -> list[str]:
     # ── Tweet 1: opener ───────────────────────────────────────────────────────
     key_concern = digest.key_concern or ''
     concern_budget = TWEET_MAX - len(date_str) - len(HASHTAGS) - 30
-    concern_excerpt = _trim(key_concern, concern_budget)
+    concern_excerpt = _trim_to_sentence(key_concern, concern_budget)
 
     opener = (
         f'🗞 Uganda Daily Brief — {date_str}\n\n'
@@ -173,8 +193,12 @@ def _build_thread(digest) -> list[str]:
         body_budget = TWEET_MAX - len(footer) - len('👁 Under the radar\n\n') - 10
         if len(u_title) + 2 + len(u_reason) <= body_budget:
             body = f'{u_title}\n{u_reason}'
+        elif len(u_title) + 2 <= body_budget:
+            # Title fits; trim reason at sentence boundary
+            remaining = body_budget - len(u_title) - 2
+            body = f'{u_title}\n{_trim_to_sentence(u_reason, remaining)}'
         else:
-            body = _trim(f'{u_title}\n{u_reason}', body_budget)
+            body = _trim_to_sentence(u_title, body_budget)
         tweets.append(f'👁 Under the radar\n\n{body}{footer}')
     else:
         tweets.append(f'📖 Read the full brief → {link}')
