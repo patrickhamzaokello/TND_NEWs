@@ -157,33 +157,29 @@ def _upload_illustration(digest) -> str | None:
 
 def _split_into_tweets(text: str, max_len: int) -> list[str]:
     """
-    Split a long text into tweet-sized chunks, breaking at sentence boundaries.
-    Each chunk is at most max_len characters.
+    Split text into tweet-sized chunks, packing as many sentences as possible
+    into each chunk before starting a new one. Breaks only at sentence boundaries.
     """
-    paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+    import re
+
+    # Split all text into individual sentences first
+    raw_sentences = re.split(r'(?<=[.!?])\s+', text.replace('\n', ' '))
+    sentences = [s.strip() for s in raw_sentences if s.strip()]
+
     chunks = []
+    current = ''
 
-    for para in paragraphs:
-        if len(para) <= max_len:
-            chunks.append(para)
-            continue
-
-        # Split paragraph at sentence boundaries
-        current = ''
-        # Simple sentence splitter — split after . ! ? followed by space
-        import re
-        sentences = re.split(r'(?<=[.!?])\s+', para)
-        for sentence in sentences:
-            if not current:
-                current = sentence
-            elif len(current) + 1 + len(sentence) <= max_len:
-                current = current + ' ' + sentence
-            else:
-                if current:
-                    chunks.append(current)
-                current = sentence
-        if current:
+    for sentence in sentences:
+        if not current:
+            current = sentence
+        elif len(current) + 1 + len(sentence) <= max_len:
+            current = current + ' ' + sentence
+        else:
             chunks.append(current)
+            current = sentence
+
+    if current:
+        chunks.append(current)
 
     return chunks
 
@@ -197,7 +193,6 @@ def _build_thread(digest) -> list[str]:
       Tweet 2+ — digest_text split into tweet-sized paragraphs
       Last     — link to full brief
     """
-    date_str = digest.digest_date.strftime('%A, %-d %B %Y')
     link = f'{SITE_URL}/digest/{digest.digest_date}'
     tweets = []
 
@@ -207,7 +202,7 @@ def _build_thread(digest) -> list[str]:
     if len(hook) > hook_budget:
         hook = _first_sentences(hook, hook_budget, n=1)
 
-    opener = f'🗞 Uganda Daily Brief — {date_str}\n\n{hook}\n\n{HASHTAGS}'
+    opener = f'🗞 NWITQ — Daily Brief\n\n{hook}\n\n{HASHTAGS}'
     tweets.append(opener)
 
     # ── Tweets 2+: digest narrative ───────────────────────────────────────────
