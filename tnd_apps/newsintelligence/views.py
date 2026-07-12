@@ -973,3 +973,44 @@ class StoryAlertListView(generics.ListAPIView):
         else:
             qs = qs.exclude(status='suppressed')
         return qs
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# Public digest homepage (replaces Swagger on the site root)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def digest_home(request, digest_date=None):
+    """
+    Public web page: latest (or dated) daily digest on the left,
+    list of previous digests on the right.
+    """
+    from datetime import datetime as _dt
+
+    from django.shortcuts import render
+    from django.http import Http404
+
+    qs = DailyDigest.objects.filter(is_published=True).order_by('-digest_date')
+
+    if digest_date:
+        try:
+            target = _dt.strptime(digest_date, '%Y-%m-%d').date()
+        except ValueError:
+            raise Http404('Invalid date')
+        digest = qs.filter(digest_date=target).first()
+        if not digest:
+            raise Http404('No digest for this date')
+    else:
+        digest = qs.first()
+
+    previous = qs.exclude(pk=digest.pk)[:14] if digest else []
+
+    # digest_text paragraphs for clean rendering
+    paragraphs = []
+    if digest and digest.digest_text:
+        paragraphs = [p.strip() for p in digest.digest_text.split('\n') if p.strip()]
+
+    return render(request, 'newsintelligence/digest_home.html', {
+        'digest': digest,
+        'paragraphs': paragraphs,
+        'previous': previous,
+    })

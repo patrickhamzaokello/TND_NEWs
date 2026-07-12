@@ -8,6 +8,7 @@ from django.http import JsonResponse
 from django.db import connection
 
 from TNDNEWS import settings
+from tnd_apps.newsintelligence.views import digest_home
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -48,8 +49,12 @@ urlpatterns = [
 
     path('videos/', include('tnd_apps.tndvideo.urls')),
 
-    # Swagger endpoints
-    path('', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
+    # Public digest homepage
+    path('', digest_home, name='digest-home'),
+    path('digest/<str:digest_date>/', digest_home, name='digest-detail'),
+
+    # Swagger endpoints (moved off the root)
+    path('docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),
     path('api/api.json/', schema_view.without_ui(cache_timeout=0), name='schema-json'),
     path('redoc/', schema_view.with_ui('redoc', cache_timeout=0), name='schema-redoc'),
 

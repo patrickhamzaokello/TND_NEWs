@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{% if digest %}NWITQ Daily Brief — {{ digest.digest_date|date:"j F Y" }}{% else %}NWITQ Daily Brief{% endif %}</title>
+<meta name="description" content="{% if digest %}{{ digest.key_concern_short|default:digest.key_concern|truncatechars:150 }}{% else %}Uganda's daily news intelligence brief.{% endif %}">
+<style>
+  :root {
+    --ink: #191919;
+    --muted: #6b6b6b;
+    --faint: #9a9a9a;
+    --line: #e8e8e4;
+    --bg: #fbfbf9;
+    --card: #ffffff;
+    --accent: #c8401a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: Georgia, 'Times New Roman', serif;
+    background: var(--bg);
+    color: var(--ink);
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+
+  header.site {
+    border-bottom: 1px solid var(--line);
+    background: var(--card);
+    padding: 18px 24px;
+  }
+  header.site .wrap {
+    max-width: 1080px; margin: 0 auto;
+    display: flex; align-items: baseline; justify-content: space-between;
+  }
+  .brand { font-weight: 700; font-size: 20px; letter-spacing: 0.02em; text-decoration: none; color: var(--ink); }
+  .brand span { color: var(--accent); }
+  .tagline { font-size: 13px; color: var(--faint); }
+
+  .layout {
+    max-width: 1080px; margin: 0 auto; padding: 36px 24px 72px;
+    display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 56px;
+  }
+
+  /* ── Left: digest detail ── */
+  .kicker { font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase; color: var(--accent); font-weight: 600; }
+  h1.date { font-size: 34px; line-height: 1.2; margin: 6px 0 4px; font-weight: 700; }
+  .meta { font-size: 13px; color: var(--faint); margin-bottom: 28px; }
+
+  figure.illustration { margin: 0 0 28px; }
+  figure.illustration img {
+    width: 100%; border-radius: 8px; display: block;
+  }
+  figure.illustration figcaption {
+    font-size: 13px; color: var(--muted); font-style: italic; margin-top: 8px;
+  }
+
+  .brief p { font-size: 17.5px; margin-bottom: 20px; }
+  .brief p:first-of-type::first-letter {
+    font-size: 52px; float: left; line-height: 0.85;
+    padding-right: 10px; padding-top: 4px; font-weight: 700; color: var(--accent);
+  }
+
+  .concern {
+    margin: 32px 0; padding: 20px 24px;
+    border-left: 3px solid var(--accent); background: var(--card);
+    border-radius: 0 8px 8px 0;
+  }
+  .concern .label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 6px; }
+  .concern p { font-size: 16px; }
+
+  .under-radar { margin: 32px 0 0; padding-top: 24px; border-top: 1px solid var(--line); }
+  .under-radar .label { font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase; color: var(--faint); font-weight: 600; margin-bottom: 8px; }
+  .under-radar h3 { font-size: 19px; margin-bottom: 6px; }
+  .under-radar p { font-size: 15.5px; color: var(--muted); }
+
+  /* ── Right: previous digests ── */
+  aside h2 {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; margin-bottom: 16px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+  .prev-item { display: block; text-decoration: none; color: inherit; padding: 14px 0; border-bottom: 1px solid var(--line); }
+  .prev-item:hover .prev-date { color: var(--accent); }
+  .prev-date { font-weight: 700; font-size: 15px; transition: color 0.15s; }
+  .prev-teaser { font-size: 13.5px; color: var(--muted); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  footer.site {
+    border-top: 1px solid var(--line); padding: 24px; text-align: center;
+    font-size: 13px; color: var(--faint);
+  }
+  footer.site a { color: var(--muted); }
+
+  .empty { padding: 80px 24px; text-align: center; color: var(--muted); }
+
+  @media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; gap: 40px; padding-top: 24px; }
+    h1.date { font-size: 27px; }
+    .brief p { font-size: 16.5px; }
+  }
+</style>
+</head>
+<body>
+
+<header class="site sans">
+  <div class="wrap">
+    <a class="brand" href="/">NWITQ<span>.</span> News</a>
+    <div class="tagline">Uganda's daily news intelligence</div>
+  </div>
+</header>
+
+{% if digest %}
+<div class="layout">
+
+  <main>
+    <div class="kicker sans">Daily Brief</div>
+    <h1 class="date">{{ digest.digest_date|date:"l, j F Y" }}</h1>
+    <div class="meta sans">{{ digest.articles_analyzed }} articles analysed · NWITQ News Intelligence</div>
+
+    {% if digest.illustration %}
+    <figure class="illustration">
+      <img src="{{ digest.illustration.url }}" alt="{{ digest.illustration_caption|default:'Editorial illustration' }}">
+      {% if digest.illustration_caption %}<figcaption>{{ digest.illustration_caption }}</figcaption>{% endif %}
+    </figure>
+    {% endif %}
+
+    <div class="brief">
+      {% for para in paragraphs %}
+      <p>{{ para }}</p>
+      {% endfor %}
+    </div>
+
+    {% if digest.key_concern %}
+    <div class="concern">
+      <div class="label sans">Key concern today</div>
+      <p>{{ digest.key_concern }}</p>
+    </div>
+    {% endif %}
+
+    {% if digest.under_radar_story.title %}
+    <div class="under-radar">
+      <div class="label sans">Under the radar</div>
+      <h3>{{ digest.under_radar_story.title }}</h3>
+      {% if digest.under_radar_story.reason %}<p>{{ digest.under_radar_story.reason }}</p>{% endif %}
+    </div>
+    {% endif %}
+  </main>
+
+  <aside>
+    <h2 class="sans">Previous briefs</h2>
+    {% for prev in previous %}
+    <a class="prev-item" href="/digest/{{ prev.digest_date|date:'Y-m-d' }}/">
+      <div class="prev-date">{{ prev.digest_date|date:"l, j F" }}</div>
+      <div class="prev-teaser sans">{{ prev.key_concern_short|default:prev.key_concern|truncatechars:120 }}</div>
+    </a>
+    {% empty %}
+    <p class="sans" style="color: var(--faint); font-size: 14px;">No previous briefs yet.</p>
+    {% endfor %}
+  </aside>
+
+</div>
+{% else %}
+<div class="empty sans">
+  <p>No published brief yet. Check back soon.</p>
+</div>
+{% endif %}
+
+<footer class="site sans">
+  NWITQ News — synthesized daily from Ugandan news sources.
+</footer>
+
+</body>
+</html>
