@@ -294,6 +294,47 @@ def generate_editorial_images_batch(self, enrichment_ids: list) -> dict:
     return {'done': done, 'skipped': skipped, 'failed': failed}
 
 
+@shared_task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=120,
+    name='newsintelligence.tasks.process_story_engine',
+)
+def process_story_engine(self, batch_size: int = 100):
+    """
+    Semantic story engine pass: embed new articles, assign them to stories
+    (event detection), and re-synthesize stories that changed significantly.
+    Runs after each enrichment cycle.
+    """
+    from .story_engine import process_new_articles
+
+    logger.info('[Task] process_story_engine | batch_size=%d', batch_size)
+    try:
+        return process_new_articles(batch_size)
+    except Exception as exc:
+        logger.exception('process_story_engine failed: %s', exc)
+        raise self.retry(exc=exc)
+
+
+@shared_task(
+    bind=True,
+    max_retries=1,
+    name='newsintelligence.tasks.synthesize_story',
+)
+def synthesize_story_task(self, cluster_id: int, force: bool = False):
+    """Re-synthesize a single story on demand (admin action)."""
+    from .models import StoryCluster
+    from .story_engine import synthesize_story
+
+    try:
+        cluster = StoryCluster.objects.get(pk=cluster_id)
+    except StoryCluster.DoesNotExist:
+        return {'status': 'error', 'reason': 'not_found'}
+
+    ok = synthesize_story(cluster, force=force)
+    return {'status': 'ok' if ok else 'skipped', 'cluster_id': cluster_id, 'version': cluster.version}
+
+
 @shared_task(name='newsintelligence.tasks.build_story_clusters')
 def build_story_clusters(days: int = 7):
     from django.core.management import call_command

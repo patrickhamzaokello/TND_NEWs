@@ -15,7 +15,9 @@ from .models import (
     StoryAlert,
     StoryCluster,
     StoryClusterArticle,
+    StoryClusterRelation,
     StoryTimelineEvent,
+    StoryVersion,
 )
 
 
@@ -401,13 +403,58 @@ class StoryTimelineEventInline(admin.TabularInline):
     extra = 0
 
 
+class StoryVersionInline(admin.TabularInline):
+    model = StoryVersion
+    extra = 0
+    fields = ('version', 'title', 'article_count', 'change_note', 'created_at')
+    readonly_fields = ('version', 'title', 'article_count', 'change_note', 'created_at')
+    can_delete = False
+    ordering = ('-version',)
+
+
 @admin.register(StoryCluster)
 class StoryClusterAdmin(admin.ModelAdmin):
-    list_display = ('title', 'status', 'primary_theme', 'importance_score', 'last_seen_at')
-    list_filter = ('status', 'primary_theme')
-    search_fields = ('title', 'summary', 'why_this_matters')
+    list_display = (
+        'title', 'status', 'version', 'article_count_display',
+        'primary_theme', 'importance_score', 'synthesized_at', 'last_seen_at',
+    )
+    list_filter = ('status', 'primary_theme', 'version')
+    search_fields = ('title', 'summary', 'short_summary', 'why_this_matters')
     prepopulated_fields = {'slug': ('title',)}
-    inlines = [StoryClusterArticleInline, StoryTimelineEventInline]
+    readonly_fields = ('version', 'synthesized_at', 'articles_at_synthesis')
+    exclude = ('centroid_embedding',)
+    inlines = [StoryVersionInline, StoryClusterArticleInline, StoryTimelineEventInline]
+    actions = ['action_synthesize']
+
+    def article_count_display(self, obj):
+        return obj.cluster_articles.count()
+    article_count_display.short_description = 'Articles'
+
+    @admin.action(description='Re-synthesize story (AI title + summary + highlights)')
+    def action_synthesize(self, request, queryset):
+        from .tasks import synthesize_story_task
+        for cluster in queryset:
+            synthesize_story_task.delay(cluster.pk, force=True)
+        self.message_user(request, f'Queued synthesis for {queryset.count()} story(ies).')
+
+
+@admin.register(StoryClusterRelation)
+class StoryClusterRelationAdmin(admin.ModelAdmin):
+    list_display = ('from_cluster', 'relation_type', 'to_cluster', 'note', 'created_at')
+    list_filter = ('relation_type',)
+    search_fields = ('from_cluster__title', 'to_cluster__title', 'note')
+    ordering = ('-created_at',)
+
+
+@admin.register(StoryVersion)
+class StoryVersionAdmin(admin.ModelAdmin):
+    list_display = ('cluster', 'version', 'title', 'article_count', 'change_note', 'created_at')
+    search_fields = ('title', 'cluster__title')
+    readonly_fields = (
+        'cluster', 'version', 'title', 'short_summary', 'long_summary',
+        'key_highlights', 'article_count', 'change_note', 'created_at',
+    )
+    ordering = ('-created_at',)
 
 
 @admin.register(SourcePerspective)

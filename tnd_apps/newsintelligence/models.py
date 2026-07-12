@@ -155,6 +155,14 @@ class ArticleEnrichment(models.Model):
     )
     editorial_image_error = models.TextField(blank=True, help_text='Error detail from last attempt')
 
+    # ── Semantic embedding (story matching / event detection) ─────────────────
+
+    embedding = models.JSONField(
+        null=True, blank=True,
+        help_text='Semantic vector (text-embedding-3-small, 1536 dims) of title+summary+entities',
+    )
+    embedded_at = models.DateTimeField(null=True, blank=True)
+
     # ── Token tracking (for cost monitoring) ─────────────────────────────────
 
     input_tokens_used = models.IntegerField(default=0)
@@ -396,6 +404,29 @@ class StoryCluster(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
+    # ── Semantic story engine ─────────────────────────────────────────────────
+
+    centroid_embedding = models.JSONField(
+        null=True, blank=True,
+        help_text='Mean embedding of member articles — used for event detection',
+    )
+    # AI-synthesized story content (generated from all member articles)
+    short_summary = models.TextField(
+        blank=True, help_text='2-3 sentence synthesized summary of the story so far'
+    )
+    long_summary = models.TextField(
+        blank=True, help_text='Full synthesized narrative combining all source reporting'
+    )
+    key_highlights = models.JSONField(
+        default=list, blank=True,
+        help_text='Consensus facts across sources: [{"text", "sources_count"}]',
+    )
+    version = models.IntegerField(default=0, help_text='Incremented on each synthesis')
+    synthesized_at = models.DateTimeField(null=True, blank=True)
+    articles_at_synthesis = models.IntegerField(
+        default=0, help_text='Article count when last synthesized — used to detect growth'
+    )
+
     def __str__(self):
         return self.title
 
@@ -423,6 +454,71 @@ class StoryClusterArticle(models.Model):
             models.Index(fields=['cluster', '-relevance_score']),
             models.Index(fields=['article']),
         ]
+
+
+class StoryClusterRelation(models.Model):
+    """
+    Story graph edge: links related-but-distinct stories into an arc.
+    E.g. 'Besigye arrest (Nov)' → 'Besigye treason ruling (July)'.
+    """
+    RELATION_CHOICES = [
+        ('continuation', 'Continuation — later development of the same saga'),
+        ('related', 'Related — connected but distinct event'),
+    ]
+
+    from_cluster = models.ForeignKey(
+        StoryCluster, on_delete=models.CASCADE, related_name='outgoing_relations',
+        help_text='The newer story',
+    )
+    to_cluster = models.ForeignKey(
+        StoryCluster, on_delete=models.CASCADE, related_name='incoming_relations',
+        help_text='The earlier story it relates to',
+    )
+    relation_type = models.CharField(max_length=20, choices=RELATION_CHOICES, default='related')
+    note = models.CharField(max_length=300, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'story_cluster_relations'
+        unique_together = ['from_cluster', 'to_cluster']
+        indexes = [
+            models.Index(fields=['from_cluster']),
+            models.Index(fields=['to_cluster']),
+        ]
+
+    def __str__(self):
+        return f'{self.from_cluster_id} —{self.relation_type}→ {self.to_cluster_id}'
+
+
+class StoryVersion(models.Model):
+    """
+    Immutable snapshot of a story's synthesized content at a point in time.
+    A new version is created every time the story is re-synthesized after
+    significant new reporting arrives.
+    """
+    cluster = models.ForeignKey(StoryCluster, on_delete=models.CASCADE, related_name='versions')
+    version = models.IntegerField()
+    title = models.CharField(max_length=300)
+    short_summary = models.TextField(blank=True)
+    long_summary = models.TextField(blank=True)
+    key_highlights = models.JSONField(default=list, blank=True)
+    article_count = models.IntegerField(default=0)
+    change_note = models.CharField(
+        max_length=300, blank=True,
+        help_text='What changed in this version (e.g. "3 new articles; title updated")',
+    )
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'story_versions'
+        unique_together = ['cluster', 'version']
+        ordering = ['-version']
+        indexes = [
+            models.Index(fields=['cluster', '-version']),
+        ]
+
+    def __str__(self):
+        return f'{self.cluster_id} v{self.version}: {self.title[:60]}'
 
 
 class StoryTimelineEvent(models.Model):

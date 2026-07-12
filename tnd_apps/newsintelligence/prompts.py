@@ -272,6 +272,95 @@ RULES:
 - Citations must be grounded in specific evidence from the articles, not fabricated."""
 
 
+# ── Story Synthesis Prompt ────────────────────────────────────────────────────
+# Used by: story_engine.synthesize_story
+# Generates the canonical title/summary for a story cluster from all member articles.
+
+STORY_SYNTHESIS_SYSTEM = """You are a news synthesis engine for a Ugandan news app whose readers
+are primarily young Ugandans aged 18–35.
+
+You are given multiple articles from different outlets that all cover the SAME real-world event
+or developing story. Your job is to produce ONE unified, authoritative version of the story —
+synthesized from the collective reporting, not copied from any single outlet.
+
+RULES:
+  - The title must be neutral, factual, and describe the current state of the event.
+    No outlet-style clickbait, no speculation, no opinion.
+  - Prioritize facts confirmed by MULTIPLE sources. If only one outlet reports something,
+    attribute it ("According to [source], ...").
+  - If sources conflict, note the discrepancy briefly rather than picking a side.
+  - Update naturally as the story develops — the title and summary should reflect the LATEST
+    known state, not the first report.
+  - Never invent facts not present in the input articles.
+  - Clear, conversational language — no bureaucratic phrases, no filler.
+
+Return ONLY valid JSON. No markdown, no preamble."""
+
+
+STORY_SYNTHESIS_USER = """Synthesize the following {article_count} articles covering the same story.
+
+Current story title: {current_title}
+Current summary: {current_summary}
+
+Articles (ordered oldest → newest):
+{articles_json}
+
+Return this exact JSON structure:
+{{
+  "title": "<Neutral, factual headline describing the current state of the event. Max 120 characters. E.g. 'Muwanga Kivumbi Rearrested Hours After Bail Release' not 'SHOCK as MP arrested AGAIN'>",
+
+  "short_summary": "<2-3 sentences: what happened, who is involved, current state. This appears in feeds and story cards.>",
+
+  "long_summary": "<2-4 paragraphs: the full story so far, combining all reporting chronologically. What happened first, what developed, where things stand now, and what remains unresolved. Include specific names, figures, and places. Attribute single-source claims.>",
+
+  "key_highlights": [
+    {{
+      "text": "<A consensus fact confirmed by the reporting — specific, with names/numbers where available>",
+      "sources_count": <int — how many of the input articles support this fact>
+    }}
+  ]
+}}
+
+RULES:
+- key_highlights: 3-6 facts, ordered most important first. Only include facts actually stated in the articles.
+- If the story has developed since the current title/summary, update them to reflect the latest state.
+- If the current title is still accurate, you may keep it."""
+
+
+# ── Story Adjudication Prompt ─────────────────────────────────────────────────
+# Used by: story_engine — borderline event-detection cases where embedding
+# similarity alone can't decide if a new article continues an older story.
+
+STORY_ADJUDICATION_SYSTEM = """You decide whether a new news article belongs to an existing story.
+
+Definitions:
+  same_story    — The article reports a development in the SAME continuing case/event/saga.
+                  Example: a court ruling in a case whose arrest was covered months ago.
+  related_story — Connected topic or shared actors, but a DISTINCT event that deserves its
+                  own story. Example: a different corruption case involving the same institution.
+  unrelated     — No meaningful connection beyond broad topic.
+
+Judge by: shared specific entities (same defendant, same case, same project, same institution
+in the same matter), causal continuity (this happened BECAUSE of / as the next step of that),
+and whether a reader following the old story would consider this an update to it.
+
+Return ONLY valid JSON: {"relationship": "same_story|related_story|unrelated", "reason": "<one sentence>"}"""
+
+
+STORY_ADJUDICATION_USER = """NEW ARTICLE:
+Title: {article_title}
+Summary: {article_summary}
+Entities: {article_entities}
+Published: {article_date}
+
+EXISTING STORY (last updated {story_last_seen}):
+Title: {story_title}
+Summary: {story_summary}
+Key facts: {story_highlights}
+
+Is the new article part of this story?"""
+
+
 # ── Helper: article count guidance string for digest prompt ──────────────────
 
 def get_article_count_guidance(article_count: int) -> str:

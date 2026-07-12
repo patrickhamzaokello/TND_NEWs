@@ -88,8 +88,10 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=35, hour=15),  # 18:35 EAT
         'kwargs': {'slot': 'evening'},
     },
-    'build-story-clusters-hourly': {
-        'task': 'newsintelligence.tasks.build_story_clusters',
+    # Semantic story engine: embed → event-detect → assign → synthesize.
+    # Runs at :45, 30 min after the :15 enrichment cycle.
+    'process-story-engine-hourly': {
+        'task': 'newsintelligence.tasks.process_story_engine',
         'schedule': crontab(minute=45),
     },
     'send-story-alerts': {

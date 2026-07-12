@@ -285,6 +285,8 @@ class StoryClusterListSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'summary', 'why_this_matters',
             'local_impact', 'primary_theme', 'status', 'importance_score',
             'first_seen_at', 'last_seen_at', 'article_count', 'source_count',
+            # Synthesized story content (semantic story engine)
+            'short_summary', 'key_highlights', 'version', 'synthesized_at',
         ]
 
 
@@ -292,9 +294,50 @@ class StoryClusterDetailSerializer(StoryClusterListSerializer):
     articles = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
     perspectives = SourcePerspectiveSerializer(source='source_perspectives', many=True, read_only=True)
+    versions = serializers.SerializerMethodField()
+    related_stories = serializers.SerializerMethodField()
 
     class Meta(StoryClusterListSerializer.Meta):
-        fields = StoryClusterListSerializer.Meta.fields + ['articles', 'timeline', 'perspectives']
+        fields = StoryClusterListSerializer.Meta.fields + [
+            'long_summary', 'articles', 'timeline', 'perspectives', 'versions',
+            'related_stories',
+        ]
+
+    def get_related_stories(self, obj):
+        """Story graph: earlier stories this one continues + later follow-ups."""
+        result = []
+        for rel in obj.outgoing_relations.select_related('to_cluster'):
+            result.append({
+                'id': rel.to_cluster.pk,
+                'slug': rel.to_cluster.slug,
+                'title': rel.to_cluster.title,
+                'relation': rel.relation_type,
+                'direction': 'earlier',
+                'last_seen_at': rel.to_cluster.last_seen_at,
+            })
+        for rel in obj.incoming_relations.select_related('from_cluster'):
+            result.append({
+                'id': rel.from_cluster.pk,
+                'slug': rel.from_cluster.slug,
+                'title': rel.from_cluster.title,
+                'relation': rel.relation_type,
+                'direction': 'later',
+                'last_seen_at': rel.from_cluster.last_seen_at,
+            })
+        return result
+
+    def get_versions(self, obj):
+        return [
+            {
+                'version': v.version,
+                'title': v.title,
+                'short_summary': v.short_summary,
+                'article_count': v.article_count,
+                'change_note': v.change_note,
+                'created_at': v.created_at,
+            }
+            for v in obj.versions.all()[:10]
+        ]
 
     def get_articles(self, obj):
         links = (
