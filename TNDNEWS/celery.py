@@ -51,13 +51,13 @@ celery_app.conf.beat_schedule = {
     # Digest runs 4× a day, always 30 min after the :15 enrichment cycle so
     # freshly scraped articles are already processed before synthesis begins.
     # Times in EAT (UTC+3):
-    #   05:30 UTC = 08:30 EAT — morning briefing (overnight + early papers)
+    #   05:00 UTC = 08:00 EAT — morning briefing (35 min before emails, gives illustration time to generate)
     #   09:30 UTC = 12:30 EAT — midday update  (morning news cycle)
     #   15:30 UTC = 18:30 EAT — evening wrap-up (afternoon news cycle)
     #   18:30 UTC = 21:30 EAT — night update    (prime-time TV stories online)
     'generate-daily-digest-morning': {
         'task': 'newsintelligence.tasks.generate_daily_digest',
-        'schedule': crontab(minute=30, hour=5),
+        'schedule': crontab(minute=0, hour=5),   # 08:00 EAT — 35 min before email send
         'kwargs': {'slot': 'morning'},
     },
     'generate-daily-digest-midday': {
