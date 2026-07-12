@@ -565,24 +565,35 @@ def synthesize_story(cluster, force: bool = False) -> bool:
     long_summary = data.get('long_summary', '')
     key_highlights = data.get('key_highlights', [])
 
+    from django.db.models import Max
+    from .models import StoryCluster
+
     with transaction.atomic():
-        cluster.title = title
-        cluster.short_summary = short_summary
-        cluster.long_summary = long_summary
-        cluster.key_highlights = key_highlights
-        cluster.summary = short_summary  # keep legacy field in sync
-        cluster.version += 1
-        cluster.synthesized_at = timezone.now()
-        cluster.articles_at_synthesis = len(members)
-        cluster.save(update_fields=[
+        # Lock the row and compute the next version from the DB — the in-memory
+        # cluster.version may be stale if another worker synthesized concurrently.
+        locked = StoryCluster.objects.select_for_update().get(pk=cluster.pk)
+        max_existing = StoryVersion.objects.filter(cluster=locked).aggregate(
+            m=Max('version')
+        )['m'] or 0
+        next_version = max(locked.version, max_existing) + 1
+
+        locked.title = title
+        locked.short_summary = short_summary
+        locked.long_summary = long_summary
+        locked.key_highlights = key_highlights
+        locked.summary = short_summary  # keep legacy field in sync
+        locked.version = next_version
+        locked.synthesized_at = timezone.now()
+        locked.articles_at_synthesis = len(members)
+        locked.save(update_fields=[
             'title', 'short_summary', 'long_summary', 'key_highlights',
             'summary', 'version', 'synthesized_at', 'articles_at_synthesis',
             'updated_at',
         ])
 
         StoryVersion.objects.create(
-            cluster=cluster,
-            version=cluster.version,
+            cluster=locked,
+            version=next_version,
             title=title,
             short_summary=short_summary,
             long_summary=long_summary,
@@ -590,6 +601,11 @@ def synthesize_story(cluster, force: bool = False) -> bool:
             article_count=len(members),
             change_note=reason[:300],
         )
+
+        # Reflect the new state on the caller's instance
+        cluster.version = next_version
+        cluster.title = title
+        cluster.short_summary = short_summary
 
     logger.info(
         'Story synthesized | id=%d v%d (%s) "%s"',
