@@ -155,9 +155,9 @@ Style keywords: stippling, dot-work, editorial illustration, engraving, modern m
 
 CAPTION_SYSTEM = (
     'You are an editorial caption writer for a premium news digest. '
-    'Write one sentence (max 20 words) that works as an illustration caption — '
-    'evocative, not literal. Do not start with "An illustration of" or "A depiction of". '
-    'Return only the caption text, no quotes.'
+    'Write one short sentence (max 15 words) that works as an evocative illustration caption. '
+    'Do not start with "An illustration of", "A depiction of", or "Illustration inspired by". '
+    'Return only the caption text, no quotes, no punctuation at the end.'
 )
 
 
@@ -206,64 +206,112 @@ def _record_illustration(digest, status: str, error: str = ''):
     digest.save(update_fields=['illustration_last_attempt', 'illustration_status', 'illustration_error'])
 
 
+def _try_img2img(story: dict) -> bytes | None:
+    """
+    Try to generate an img2img illustration from a top story's featured image.
+    Returns image bytes on success, None if no image or download fails.
+    Raises openai.BadRequestError with code='moderation_blocked' if flagged.
+    """
+    from tnd_apps.news_scrapping.models import Article
+    article_id = story.get('article_id')
+    if not article_id:
+        return None
+    try:
+        article = Article.objects.get(pk=article_id)
+    except Article.DoesNotExist:
+        return None
+    if not article.featured_image_url:
+        return None
+    try:
+        raw = _download_image(article.featured_image_url)
+    except Exception as e:
+        logger.warning('Could not download image for article %s: %s', article_id, e)
+        return None
+    png_bytes = _to_png_bytes(raw)
+    prompt = ILLUSTRATION_PROMPT_TEMPLATE.format(title=story.get('title', ''), base_prompt=EDITORIAL_PROMPT)
+    # Let moderation errors propagate so the caller can skip to the next story
+    return _call_openai_image_edit_with_prompt(png_bytes, prompt)
+
+
 def generate_digest_illustration(digest) -> bool:
     """
-    Generate an editorial illustration for a DailyDigest based on its top story.
+    Generate an editorial illustration for a DailyDigest.
 
     Strategy:
-      - If the top story's article has a featured image → img2img editorial transform
-      - Otherwise → text2img using the story title + key concern as the scene brief
+      1. Try img2img on each top story in order — skip stories whose images are
+         moderation-blocked and move to the next one.
+      2. If all top stories are blocked or have no image, fall back to text2img
+         using the first top story's title + why_it_matters.
 
-    Also generates a one-sentence editorial caption via GPT.
+    Caption references the story the image was drawn from so readers understand
+    the connection.
 
     Returns True on success, False on skip/failure.
     """
+    import openai as _openai
+
     top_stories = digest.top_stories or []
     if not top_stories:
         logger.warning('generate_digest_illustration: digest %s has no top stories', digest.digest_date)
         _record_illustration(digest, 'skipped', 'No top stories in digest')
         return False
 
-    top = top_stories[0]
-    title = top.get('title', '')
-    article_id = top.get('article_id')
-    key_concern = digest.key_concern or title
+    key_concern = digest.key_concern or ''
+    result_bytes = None
+    source_story = None  # the story whose image was actually used
 
-    logger.info('Generating digest illustration | date=%s story="%s"', digest.digest_date, title[:60])
-
-    try:
-        # ── Attempt img2img if the article has a featured image ───────────────
-        result_bytes = None
-        if article_id:
-            from tnd_apps.news_scrapping.models import Article
-            try:
-                article = Article.objects.get(pk=article_id)
-                if article.featured_image_url:
-                    raw = _download_image(article.featured_image_url)
-                    png_bytes = _to_png_bytes(raw)
-                    prompt = ILLUSTRATION_PROMPT_TEMPLATE.format(
-                        title=title,
-                        base_prompt=EDITORIAL_PROMPT,
-                    )
-                    result_bytes = _call_openai_image_edit_with_prompt(png_bytes, prompt)
-            except Article.DoesNotExist:
-                pass
-            except Exception as e:
-                logger.warning(
-                    'Digest img2img failed for article %s, falling back to text2img: %s',
-                    article_id, e,
+    # ── Try img2img across top stories ───────────────────────────────────────
+    for story in top_stories:
+        title = story.get('title', '')
+        try:
+            result_bytes = _try_img2img(story)
+            if result_bytes is not None:
+                source_story = story
+                logger.info(
+                    'Digest img2img succeeded | date=%s story="%s"',
+                    digest.digest_date, title[:60],
                 )
+                break
+        except _openai.BadRequestError as e:
+            code = getattr(e, 'code', None) or (e.body or {}).get('code', '')
+            if code == 'moderation_blocked':
+                logger.warning(
+                    'Digest img2img blocked for story "%s" — trying next story', title[:60]
+                )
+                continue
+            raise
 
-        # ── Fall back to text2img ─────────────────────────────────────────────
-        if result_bytes is None:
-            context = top.get('why_it_matters') or key_concern
-            prompt = ILLUSTRATION_TEXT_PROMPT_TEMPLATE.format(title=title, context=context)
+    # ── Fall back to text2img using first story ───────────────────────────────
+    if result_bytes is None:
+        top = top_stories[0]
+        source_story = top
+        context = top.get('why_it_matters') or key_concern or top.get('title', '')
+        prompt = ILLUSTRATION_TEXT_PROMPT_TEMPLATE.format(
+            title=top.get('title', ''), context=context
+        )
+        logger.info(
+            'Digest illustration falling back to text2img | date=%s story="%s"',
+            digest.digest_date, top.get('title', '')[:60],
+        )
+        try:
             result_bytes = _call_openai_image_generate(prompt)
+        except _openai.BadRequestError as e:
+            code = getattr(e, 'code', None) or (e.body or {}).get('code', '')
+            if code == 'moderation_blocked':
+                logger.warning('Digest text2img also blocked | date=%s', digest.digest_date)
+                _record_illustration(digest, 'moderation', str(e)[:500])
+                return False
+            raise
 
-        # ── Generate caption ──────────────────────────────────────────────────
-        caption = _generate_caption(title, key_concern)
+    # ── Generate caption referencing the source story ─────────────────────────
+    source_title = source_story.get('title', '') if source_story else ''
+    caption = _generate_caption(source_title, key_concern)
+    # Prefix caption with a story reference so readers know the connection
+    if source_title:
+        caption = f'Illustration inspired by: {source_title}. {caption}'
 
-        # ── Save ──────────────────────────────────────────────────────────────
+    # ── Save ──────────────────────────────────────────────────────────────────
+    try:
         filename = f'{digest.digest_date}_{uuid.uuid4().hex[:8]}.png'
         digest.illustration.save(filename, ContentFile(result_bytes), save=False)
         digest.illustration_caption = caption
@@ -275,28 +323,11 @@ def generate_digest_illustration(digest) -> bool:
             'illustration', 'illustration_caption', 'illustration_generated_at',
             'illustration_last_attempt', 'illustration_status', 'illustration_error',
         ])
-
-        logger.info(
-            'Digest illustration saved | date=%s caption="%s"',
-            digest.digest_date, caption[:80],
-        )
+        logger.info('Digest illustration saved | date=%s caption="%s"', digest.digest_date, caption[:80])
         return True
 
     except Exception as e:
-        import openai as _openai
-        if isinstance(e, _openai.BadRequestError):
-            code = getattr(e, 'code', None) or (e.body or {}).get('code', '')
-            if code == 'moderation_blocked':
-                logger.warning(
-                    'Digest illustration blocked by moderation | date=%s — skipping',
-                    digest.digest_date,
-                )
-                _record_illustration(digest, 'moderation', str(e)[:500])
-                return False
-        logger.exception(
-            'Unexpected error generating digest illustration for %s: %s',
-            digest.digest_date, e,
-        )
+        logger.exception('Failed to save digest illustration for %s: %s', digest.digest_date, e)
         _record_illustration(digest, 'error', str(e)[:500])
         raise
 
