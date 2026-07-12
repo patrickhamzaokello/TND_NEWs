@@ -302,29 +302,37 @@ STORY_SYNTHESIS_USER = """Synthesize the following {article_count} articles cove
 Current story title: {current_title}
 Current summary: {current_summary}
 
+Related earlier stories on this platform (for overview context — do NOT merge their facts into this story's summary):
+{related_stories}
+
 Articles (ordered oldest → newest):
 {articles_json}
 
 Return this exact JSON structure:
 {{
-  "title": "<Neutral, factual headline describing the current state of the event. Max 120 characters. E.g. 'Muwanga Kivumbi Rearrested Hours After Bail Release' not 'SHOCK as MP arrested AGAIN'>",
+  "title": "<Neutral headline representing the ENTIRE story — who is involved + what happened + the main action. ALWAYS rewritten in your own words, never copied from any source headline. MAXIMUM 12 WORDS. No opinions, no speculation. E.g. 'Muwanga Kivumbi Rearrested Hours After Bail Release'>",
 
-  "short_summary": "<2-3 sentences: what happened, who is involved, current state. This appears in feeds and story cards.>",
+  "short_summary": "<WHAT HAPPENED: 2-3 sentences answering only 'what happened' — who, what, current state. Built from consensus facts across sources, duplicates removed. This is the card text users see before opening the story.>",
 
   "long_summary": "<2-4 paragraphs: the full story so far, combining all reporting chronologically. What happened first, what developed, where things stand now, and what remains unresolved. Include specific names, figures, and places. Attribute single-source claims.>",
 
+  "overview": "<WHY THIS MATTERS + BROADER CONTEXT: 1-2 paragraphs placing the event in context — the history that led here, related ongoing events, what is at stake, and who is affected. E.g. for 'Government announces new tax policy' the overview is 'The policy follows months of debate about revenue collection and economic reforms...'. Use the related earlier stories above for historical context where relevant. Distinct from the summary: the summary says what happened, the overview explains why it matters.>",
+
+  "why_it_matters": "<1-2 sentences: the single most direct consequence for ordinary Ugandans — especially young people, workers, students. Specific and relatable. No opinion words.>",
+
   "key_highlights": [
     {{
-      "text": "<A consensus fact confirmed by the reporting — specific, with names/numbers where available>",
+      "text": "<A specific fact from the reporting — with names/numbers/places where available. These render as overview bullet points on the story card.>",
       "sources_count": <int — how many of the input articles support this fact>
     }}
   ]
 }}
 
 RULES:
+- title: ALWAYS rewrite — even for a single-article story. Maximum 12 words.
 - key_highlights: 3-6 facts, ordered most important first. Only include facts actually stated in the articles.
-- If the story has developed since the current title/summary, update them to reflect the latest state.
-- If the current title is still accurate, you may keep it."""
+- overview: only use context that is grounded in the articles or the related stories listed — do not invent history.
+- If the story has developed since the current title/summary, update them to reflect the latest state."""
 
 
 # ── Story Adjudication Prompt ─────────────────────────────────────────────────

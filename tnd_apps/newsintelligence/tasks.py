@@ -335,18 +335,6 @@ def synthesize_story_task(self, cluster_id: int, force: bool = False):
     return {'status': 'ok' if ok else 'skipped', 'cluster_id': cluster_id, 'version': cluster.version}
 
 
-@shared_task(name='newsintelligence.tasks.build_story_clusters')
-def build_story_clusters(days: int = 7):
-    from django.core.management import call_command
-    call_command('build_story_clusters', f'--days={days}')
-    try:
-        from tnd_apps.cache_utils import on_clusters_rebuilt
-        on_clusters_rebuilt()
-    except Exception:
-        pass
-    return {'status': 'ok', 'days': days}
-
-
 @shared_task(name='newsintelligence.tasks.send_story_alerts')
 def send_story_alerts(limit: int = 20):
     from django.core.management import call_command

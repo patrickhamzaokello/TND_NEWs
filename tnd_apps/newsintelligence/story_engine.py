@@ -30,9 +30,10 @@ EMBEDDING_MODEL = 'text-embedding-3-small'
 EMBEDDING_DIMS = 1536
 
 # ── Event detection thresholds ────────────────────────────────────────────────
-SEMANTIC_ATTACH_THRESHOLD = 0.60   # combined score needed to join a story
-COSINE_STRONG_MATCH = 0.82         # cosine alone above this ⇒ same event
-COSINE_FLOOR = 0.45                # below this, never attach regardless of entities
+SEMANTIC_ATTACH_THRESHOLD = 0.66   # combined score needed to join a story
+COSINE_STRONG_MATCH = 0.86         # cosine alone above this ⇒ same event
+COSINE_FLOOR = 0.52                # below this, never attach regardless of entities
+MIN_ENTITY_OVERLAP = 0.04          # non-strong matches MUST share at least one entity
 EVENT_WINDOW_DAYS = 14             # active-story matching window
 COSINE_WEIGHT = 0.70
 ENTITY_WEIGHT = 0.30
@@ -45,7 +46,7 @@ ADJUDICATION_COSINE_MIN = 0.62     # borderline band: ask the LLM to decide
 ADJUDICATION_MAX_CANDIDATES = 2    # at most this many LLM adjudication calls per article
 
 # ── Synthesis triggers ────────────────────────────────────────────────────────
-SYNTHESIS_MIN_ARTICLES = 2         # don't synthesize single-article stories
+SYNTHESIS_MIN_ARTICLES = 1         # every story gets a rewritten title/summary/facts
 SYNTHESIS_GROWTH_TRIGGER = 2       # re-synthesize after this many new articles
 SYNTHESIS_IMPORTANCE_TRIGGER = 7   # ... or immediately if a new article scores ≥ this
 
@@ -216,8 +217,14 @@ def find_matching_story(enrichment):
         if cos >= COSINE_STRONG_MATCH:
             return cluster, cos
 
-        # Otherwise validate with entity overlap
+        # Otherwise validate with entity overlap. An article that shares NO
+        # named entity with the story can never join it — this prevents
+        # thematically-similar-but-unrelated events (two different sports
+        # stories, two different corruption cases) from merging.
         entity_sim = _jaccard(_entity_set(enrichment), _cluster_entity_set(cluster))
+        if entity_sim < MIN_ENTITY_OVERLAP:
+            continue
+
         combined = COSINE_WEIGHT * cos + ENTITY_WEIGHT * entity_sim
 
         if combined > best_score:
@@ -545,11 +552,21 @@ def synthesize_story(cluster, force: bool = False) -> bool:
             'importance': m.importance_score,
         })
 
+    # Story graph context: earlier related stories feed the overview
+    related_lines = []
+    for rel in cluster.outgoing_relations.select_related('to_cluster')[:5]:
+        parent = rel.to_cluster
+        related_lines.append(
+            f'- [{parent.last_seen_at.date()}] {parent.title}: {parent.short_summary or parent.summary or ""}'[:300]
+        )
+    related_stories = '\n'.join(related_lines) or '(none)'
+
     user_prompt = STORY_SYNTHESIS_USER.format(
         article_count=len(members),
         articles_json=json.dumps(articles_payload, ensure_ascii=False, indent=1)[:24000],
         current_title=cluster.title,
         current_summary=cluster.short_summary or '(none yet)',
+        related_stories=related_stories,
     )
 
     response = call_openai(
@@ -563,6 +580,8 @@ def synthesize_story(cluster, force: bool = False) -> bool:
     title = (data.get('title') or cluster.title)[:300]
     short_summary = data.get('short_summary', '')
     long_summary = data.get('long_summary', '')
+    overview = data.get('overview', '')
+    why_it_matters = data.get('why_it_matters', '')
     key_highlights = data.get('key_highlights', [])
 
     from django.db.models import Max
@@ -580,15 +599,17 @@ def synthesize_story(cluster, force: bool = False) -> bool:
         locked.title = title
         locked.short_summary = short_summary
         locked.long_summary = long_summary
+        locked.overview = overview
+        locked.why_this_matters = why_it_matters or locked.why_this_matters
         locked.key_highlights = key_highlights
         locked.summary = short_summary  # keep legacy field in sync
         locked.version = next_version
         locked.synthesized_at = timezone.now()
         locked.articles_at_synthesis = len(members)
         locked.save(update_fields=[
-            'title', 'short_summary', 'long_summary', 'key_highlights',
-            'summary', 'version', 'synthesized_at', 'articles_at_synthesis',
-            'updated_at',
+            'title', 'short_summary', 'long_summary', 'overview',
+            'why_this_matters', 'key_highlights', 'summary', 'version',
+            'synthesized_at', 'articles_at_synthesis', 'updated_at',
         ])
 
         StoryVersion.objects.create(
@@ -597,6 +618,7 @@ def synthesize_story(cluster, force: bool = False) -> bool:
             title=title,
             short_summary=short_summary,
             long_summary=long_summary,
+            overview=overview,
             key_highlights=key_highlights,
             article_count=len(members),
             change_note=reason[:300],
@@ -662,6 +684,14 @@ def process_new_articles(batch_size: int = 100) -> dict:
                 synthesized += 1
         except Exception as exc:
             logger.exception('Story synthesis failed for cluster %d: %s', cluster.pk, exc)
+
+    # Invalidate story caches when anything changed
+    if assigned or synthesized:
+        try:
+            from tnd_apps.cache_utils import on_clusters_rebuilt
+            on_clusters_rebuilt()
+        except Exception:
+            pass
 
     result = {
         'embedded': embedded,

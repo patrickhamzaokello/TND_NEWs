@@ -417,6 +417,10 @@ class StoryCluster(models.Model):
     long_summary = models.TextField(
         blank=True, help_text='Full synthesized narrative combining all source reporting'
     )
+    overview = models.TextField(
+        blank=True,
+        help_text='Broader context: why this matters, historical background, related events',
+    )
     key_highlights = models.JSONField(
         default=list, blank=True,
         help_text='Consensus facts across sources: [{"text", "sources_count"}]',
@@ -501,6 +505,7 @@ class StoryVersion(models.Model):
     title = models.CharField(max_length=300)
     short_summary = models.TextField(blank=True)
     long_summary = models.TextField(blank=True)
+    overview = models.TextField(blank=True)
     key_highlights = models.JSONField(default=list, blank=True)
     article_count = models.IntegerField(default=0)
     change_note = models.CharField(

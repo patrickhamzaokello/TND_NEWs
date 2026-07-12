@@ -276,8 +276,13 @@ class StoryTimelineEventSerializer(serializers.ModelSerializer):
 
 
 class StoryClusterListSerializer(serializers.ModelSerializer):
+    """
+    Story Card: title + summary + overview + image + category + timestamps
+    + source count.
+    """
     article_count = serializers.IntegerField(read_only=True)
     source_count = serializers.IntegerField(read_only=True)
+    card_image_url = serializers.SerializerMethodField()
 
     class Meta:
         model = StoryCluster
@@ -285,9 +290,21 @@ class StoryClusterListSerializer(serializers.ModelSerializer):
             'id', 'title', 'slug', 'summary', 'why_this_matters',
             'local_impact', 'primary_theme', 'status', 'importance_score',
             'first_seen_at', 'last_seen_at', 'article_count', 'source_count',
-            # Synthesized story content (semantic story engine)
-            'short_summary', 'key_highlights', 'version', 'synthesized_at',
+            # Story Card content (semantic story engine)
+            'short_summary', 'overview', 'key_highlights', 'card_image_url',
+            'version', 'synthesized_at',
         ]
+
+    def get_card_image_url(self, obj):
+        """Featured image from the most relevant member article that has one."""
+        link = (
+            obj.cluster_articles
+            .select_related('article')
+            .exclude(article__featured_image_url='')
+            .order_by('-relevance_score')
+            .first()
+        )
+        return link.article.featured_image_url if link else None
 
 
 class StoryClusterDetailSerializer(StoryClusterListSerializer):
