@@ -325,6 +325,13 @@ Return this exact JSON structure:
       "text": "<A specific fact from the reporting — with names/numbers/places where available. These render as overview bullet points on the story card.>",
       "sources_count": <int — how many of the input articles support this fact>
     }}
+  ],
+
+  "entities": [
+    {{
+      "name": "<Entity name EXACTLY as it appears in your title/summaries/highlights above — verbatim, so clients can locate and tag it. E.g. if your summary says 'Kivumbi', the name here is 'Kivumbi', not 'Muwanga Kivumbi'>",
+      "type": "person|organization|location"
+    }}
   ]
 }}
 
@@ -332,6 +339,7 @@ RULES:
 - title: ALWAYS rewrite — even for a single-article story. Concise, but never drop a distinguishing detail for brevity.
 - key_highlights: 3-6 facts, ordered most important first. Only include facts actually stated in the articles.
 - overview: only use context that is grounded in the articles or the related stories listed — do not invent history.
+- entities: every person, organization, and location that appears in your generated title, short_summary, overview, why_it_matters, or key_highlights. Use the EXACT surface form you wrote (clients do verbatim substring matching to render clickable tags). If the same entity appears in different forms (e.g. 'Muwanga Kivumbi' in the title, 'Kivumbi' in the summary), list each form as its own entry.
 - If the story has developed since the current title/summary, update them to reflect the latest state."""
 
 

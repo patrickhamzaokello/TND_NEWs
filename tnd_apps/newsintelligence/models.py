@@ -425,6 +425,10 @@ class StoryCluster(models.Model):
         default=list, blank=True,
         help_text='Consensus facts across sources: [{"text", "sources_count"}]',
     )
+    entities = models.JSONField(
+        default=list, blank=True,
+        help_text='Entities appearing verbatim in synthesized text: [{"name", "type"}] — clients substring-match to render clickable tags',
+    )
     version = models.IntegerField(default=0, help_text='Incremented on each synthesis')
     synthesized_at = models.DateTimeField(null=True, blank=True)
     articles_at_synthesis = models.IntegerField(

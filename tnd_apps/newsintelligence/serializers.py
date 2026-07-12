@@ -291,8 +291,8 @@ class StoryClusterListSerializer(serializers.ModelSerializer):
             'local_impact', 'primary_theme', 'status', 'importance_score',
             'first_seen_at', 'last_seen_at', 'article_count', 'source_count',
             # Story Card content (semantic story engine)
-            'short_summary', 'overview', 'key_highlights', 'card_image_url',
-            'version', 'synthesized_at',
+            'short_summary', 'overview', 'key_highlights', 'entities',
+            'card_image_url', 'version', 'synthesized_at',
         ]
 
     def get_card_image_url(self, obj):

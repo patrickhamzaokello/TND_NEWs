@@ -584,6 +584,26 @@ def synthesize_story(cluster, force: bool = False) -> bool:
     why_it_matters = data.get('why_it_matters', '')
     key_highlights = data.get('key_highlights', [])
 
+    # Validate entities: keep only well-formed entries that actually appear
+    # verbatim somewhere in the synthesized text (clients substring-match).
+    rendered_text = ' '.join([
+        title, short_summary, overview, why_it_matters,
+        ' '.join(h.get('text', '') for h in key_highlights if isinstance(h, dict)),
+    ])
+    entities = []
+    seen_names = set()
+    for ent in (data.get('entities') or []):
+        if not isinstance(ent, dict):
+            continue
+        name = (ent.get('name') or '').strip()
+        etype = ent.get('type', '')
+        if not name or etype not in ('person', 'organization', 'location'):
+            continue
+        if name in seen_names or name not in rendered_text:
+            continue
+        seen_names.add(name)
+        entities.append({'name': name, 'type': etype})
+
     from django.db.models import Max
     from .models import StoryCluster
 
@@ -602,14 +622,15 @@ def synthesize_story(cluster, force: bool = False) -> bool:
         locked.overview = overview
         locked.why_this_matters = why_it_matters or locked.why_this_matters
         locked.key_highlights = key_highlights
+        locked.entities = entities
         locked.summary = short_summary  # keep legacy field in sync
         locked.version = next_version
         locked.synthesized_at = timezone.now()
         locked.articles_at_synthesis = len(members)
         locked.save(update_fields=[
             'title', 'short_summary', 'long_summary', 'overview',
-            'why_this_matters', 'key_highlights', 'summary', 'version',
-            'synthesized_at', 'articles_at_synthesis', 'updated_at',
+            'why_this_matters', 'key_highlights', 'entities', 'summary',
+            'version', 'synthesized_at', 'articles_at_synthesis', 'updated_at',
         ])
 
         StoryVersion.objects.create(
