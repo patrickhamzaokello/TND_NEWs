@@ -198,7 +198,7 @@ def _build_thread(digest) -> list[str]:
 
     # ── Tweet 1: opener ───────────────────────────────────────────────────────
     hook = (digest.key_concern_short or digest.key_concern or '').strip()
-    hook_budget = TWEET_MAX - len(date_str) - len(HASHTAGS) - 30
+    hook_budget = TWEET_MAX - len('🗞 NWITQ — Daily Brief\n\n') - len(HASHTAGS) - 10
     if len(hook) > hook_budget:
         hook = _first_sentences(hook, hook_budget, n=1)
 
