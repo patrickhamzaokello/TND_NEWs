@@ -310,7 +310,7 @@ Articles (ordered oldest → newest):
 
 Return this exact JSON structure:
 {{
-  "title": "<Neutral headline representing the ENTIRE story — who is involved + what happened + the main action. ALWAYS rewritten in your own words, never copied from any source headline. MAXIMUM 12 WORDS. No opinions, no speculation. E.g. 'Muwanga Kivumbi Rearrested Hours After Bail Release'>",
+  "title": "<Neutral headline representing the ENTIRE story — who is involved + what happened + the main action. ALWAYS rewritten in your own words, never copied from any source headline. Concise but complete — include the distinguishing details (full names, institution, case) that make this story unambiguous. No opinions, no speculation. E.g. 'Muwanga Kivumbi Rearrested Hours After Bail Release in Terrorism Case'>",
 
   "short_summary": "<WHAT HAPPENED: 2-3 sentences answering only 'what happened' — who, what, current state. Built from consensus facts across sources, duplicates removed. This is the card text users see before opening the story.>",
 
@@ -329,7 +329,7 @@ Return this exact JSON structure:
 }}
 
 RULES:
-- title: ALWAYS rewrite — even for a single-article story. Maximum 12 words.
+- title: ALWAYS rewrite — even for a single-article story. Concise, but never drop a distinguishing detail for brevity.
 - key_highlights: 3-6 facts, ordered most important first. Only include facts actually stated in the articles.
 - overview: only use context that is grounded in the articles or the related stories listed — do not invent history.
 - If the story has developed since the current title/summary, update them to reflect the latest state."""
