@@ -131,36 +131,6 @@ def _first_sentences(text: str, max_len: int, n: int = 2) -> str:
     return (chunk[:last_space].rstrip() if last_space > 0 else chunk.rstrip()) + '…'
 
 
-def _story_tweet(index: int, story: dict) -> str:
-    """
-    Format a single top story as a tweet.
-    Example:
-      2/ Parliament suspends NSSF reform debate
-      MPs walked out after the Speaker ruled key clauses out of
-      order — leaving 4M contributors without clarity on withdrawals.
-      Importance: 8/10
-    """
-    prefix = f'{index}/'
-    title = story.get('title', '')
-    why = story.get('why_it_matters', '')
-    score = story.get('importance_score', '')
-
-    footer = f'\nImportance: {score}/10' if score else ''
-    # Budget: max - prefix - newlines - footer
-    body_budget = TWEET_MAX - len(prefix) - 2 - len(footer)
-
-    # Fit title + why_it_matters into the budget
-    if len(title) + 2 + len(why) <= body_budget:
-        body = f'{title}\n{why}'
-    elif len(title) + 2 <= body_budget:
-        remaining = body_budget - len(title) - 2
-        body = f'{title}\n{_trim_to_sentence(why, remaining)}'
-    else:
-        body = _trim_to_sentence(title, body_budget)
-
-    return f'{prefix} {body}{footer}'
-
-
 # ── Media upload ──────────────────────────────────────────────────────────────
 
 def _upload_illustration(digest) -> str | None:
@@ -185,58 +155,69 @@ def _upload_illustration(digest) -> str | None:
 
 # ── Thread builder ────────────────────────────────────────────────────────────
 
+def _split_into_tweets(text: str, max_len: int) -> list[str]:
+    """
+    Split a long text into tweet-sized chunks, breaking at sentence boundaries.
+    Each chunk is at most max_len characters.
+    """
+    paragraphs = [p.strip() for p in text.split('\n') if p.strip()]
+    chunks = []
+
+    for para in paragraphs:
+        if len(para) <= max_len:
+            chunks.append(para)
+            continue
+
+        # Split paragraph at sentence boundaries
+        current = ''
+        # Simple sentence splitter — split after . ! ? followed by space
+        import re
+        sentences = re.split(r'(?<=[.!?])\s+', para)
+        for sentence in sentences:
+            if not current:
+                current = sentence
+            elif len(current) + 1 + len(sentence) <= max_len:
+                current = current + ' ' + sentence
+            else:
+                if current:
+                    chunks.append(current)
+                current = sentence
+        if current:
+            chunks.append(current)
+
+    return chunks
+
+
 def _build_thread(digest) -> list[str]:
     """
-    Build the ordered list of tweet texts for the digest thread.
+    Build the daily digest as a Twitter thread from the digest_text narrative.
+
+    Structure:
+      Tweet 1  — date header + key_concern_short hook + hashtags
+      Tweet 2+ — digest_text split into tweet-sized paragraphs
+      Last     — link to full brief
     """
     date_str = digest.digest_date.strftime('%A, %-d %B %Y')
+    link = f'{SITE_URL}/digest/{digest.digest_date}'
     tweets = []
 
     # ── Tweet 1: opener ───────────────────────────────────────────────────────
-    # Use the AI-generated short hook (≤180 chars, complete sentence).
-    # Fall back to key_concern if key_concern_short isn't populated yet.
     hook = (digest.key_concern_short or digest.key_concern or '').strip()
     hook_budget = TWEET_MAX - len(date_str) - len(HASHTAGS) - 30
     if len(hook) > hook_budget:
         hook = _first_sentences(hook, hook_budget, n=1)
 
-    opener = (
-        f'🗞 Uganda Daily Brief — {date_str}\n\n'
-        f'{hook}\n\n'
-        f'{HASHTAGS}'
-    )
+    opener = f'🗞 Uganda Daily Brief — {date_str}\n\n{hook}\n\n{HASHTAGS}'
     tweets.append(opener)
 
-    # ── Tweets 2–N: top stories ───────────────────────────────────────────────
-    top_stories = digest.top_stories or []
-    for i, story in enumerate(top_stories[:4], start=2):
-        tweets.append(_story_tweet(i, story))
+    # ── Tweets 2+: digest narrative ───────────────────────────────────────────
+    digest_text = (digest.digest_text or '').strip()
+    if digest_text:
+        body_chunks = _split_into_tweets(digest_text, TWEET_MAX)
+        tweets.extend(body_chunks)
 
-    # ── Final tweet: under the radar + link ──────────────────────────────────
-    under = digest.under_radar_story or {}
-    link = f'{SITE_URL}/digest/{digest.digest_date}'
-
-    if under.get('title'):
-        u_title = under['title']
-        u_reason = under.get('reason', '')
-        footer = f'\n\n📖 Full brief → {link}'
-        body_budget = TWEET_MAX - len(footer) - len('👁 Under the radar\n\n') - 10
-        if len(u_title) + 2 + len(u_reason) <= body_budget:
-            # Both fit — include reason
-            body = f'{u_title}\n{u_reason}'
-        elif u_reason:
-            # Try fitting just the first sentence of the reason
-            first = _first_sentences(u_reason, body_budget - len(u_title) - 2, n=1)
-            if len(u_title) + 2 + len(first) <= body_budget and not first.endswith('…'):
-                body = f'{u_title}\n{first}'
-            else:
-                # Reason doesn't fit cleanly — title only
-                body = u_title
-        else:
-            body = u_title
-        tweets.append(f'👁 Under the radar\n\n{body}{footer}')
-    else:
-        tweets.append(f'📖 Read the full brief → {link}')
+    # ── Final tweet: link ─────────────────────────────────────────────────────
+    tweets.append(f'📖 Read the full brief → {link}')
 
     return tweets
 
