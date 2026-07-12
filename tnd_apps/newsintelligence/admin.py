@@ -112,17 +112,18 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
     list_display = (
         'article_title', 'status', 'sentiment', 'importance_score',
         'follow_up_worthy', 'controversy_flag', 'has_editorial_image',
-        'analyzed_at', 'token_cost',
+        'editorial_image_status_display', 'analyzed_at', 'token_cost',
     )
     list_filter = (
         'status', 'sentiment', 'follow_up_worthy',
-        'controversy_flag', 'is_breaking_candidate',
+        'controversy_flag', 'is_breaking_candidate', 'editorial_image_status',
     )
     search_fields = ('article__title', 'summary')
     readonly_fields = (
         'article', 'analyzed_at', 'input_tokens_used',
         'output_tokens_used', 'model_used', 'created_at', 'updated_at',
         'editorial_image_preview', 'editorial_image_generated_at',
+        'editorial_image_last_attempt',
     )
     ordering = ('-analyzed_at',)
     actions = ['action_generate_editorial_images']
@@ -149,11 +150,14 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
             'fields': ('follow_up_worthy', 'controversy_flag', 'is_breaking_candidate'),
         }),
         ('Editorial Image', {
-            'fields': ('editorial_image', 'editorial_image_preview', 'editorial_image_generated_at'),
+            'fields': (
+                'editorial_image', 'editorial_image_preview',
+                'editorial_image_generated_at', 'editorial_image_last_attempt',
+                'editorial_image_status', 'editorial_image_error',
+            ),
             'description': (
                 'AI-generated engraving-style image. '
-                'Use the <b>Generate editorial images</b> action on the list view to create one, '
-                'or upload your own image here.'
+                'Use the <b>Generate editorial images</b> action on the list view to create one.'
             ),
         }),
         ('Metadata', {
@@ -181,6 +185,28 @@ class ArticleEnrichmentAdmin(admin.ModelAdmin):
             return format_html('<span style="color:green;font-weight:bold;">✓</span>')
         return format_html('<span style="color:#ccc;">—</span>')
     has_editorial_image.short_description = 'Editorial img'
+
+    def editorial_image_status_display(self, obj):
+        status = obj.editorial_image_status
+        if not status:
+            return format_html('<span style="color:#aaa;">not attempted</span>')
+        colors = {
+            'generated': 'green',
+            'skipped': '#888',
+            'moderation': 'orange',
+            'download_error': 'red',
+            'api_error': 'red',
+            'error': 'red',
+        }
+        color = colors.get(status, '#888')
+        label = obj.get_editorial_image_status_display() or status
+        tip = obj.editorial_image_error or ''
+        if tip:
+            return format_html(
+                '<span style="color:{};" title="{}">{}</span>', color, tip[:200], label
+            )
+        return format_html('<span style="color:{};">{}</span>', color, label)
+    editorial_image_status_display.short_description = 'Image status'
 
     def editorial_image_preview(self, obj):
         if obj.editorial_image:
@@ -231,12 +257,13 @@ class EntityMentionAdmin(admin.ModelAdmin):
 class DailyDigestAdmin(admin.ModelAdmin):
     list_display = (
         'digest_date', 'articles_analyzed', 'is_published',
-        'editorial_review_status', 'has_illustration', 'twitter_status', 'generated_at', 'token_info',
+        'editorial_review_status', 'has_illustration', 'illustration_status_display',
+        'twitter_status', 'generated_at', 'token_info',
     )
-    list_filter = ('is_published', 'editorial_review_status')
+    list_filter = ('is_published', 'editorial_review_status', 'illustration_status')
     readonly_fields = (
         'generated_at', 'created_at',
-        'illustration_preview', 'illustration_generated_at',
+        'illustration_preview', 'illustration_generated_at', 'illustration_last_attempt',
         'twitter_posted_at', 'twitter_thread_link',
     )
     ordering = ('-digest_date',)
@@ -251,7 +278,11 @@ class DailyDigestAdmin(admin.ModelAdmin):
             ),
         }),
         ('Illustration', {
-            'fields': ('illustration', 'illustration_preview', 'illustration_caption', 'illustration_generated_at'),
+            'fields': (
+                'illustration', 'illustration_preview', 'illustration_caption',
+                'illustration_generated_at', 'illustration_last_attempt',
+                'illustration_status', 'illustration_error',
+            ),
         }),
         ('Publishing', {
             'fields': ('is_published', 'editorial_review_status', 'reviewed_by', 'reviewed_at'),
@@ -281,6 +312,28 @@ class DailyDigestAdmin(admin.ModelAdmin):
             return format_html('<span style="color:green;font-weight:bold;">✓</span>')
         return format_html('<span style="color:#ccc;">—</span>')
     has_illustration.short_description = 'Illus.'
+
+    def illustration_status_display(self, obj):
+        status = obj.illustration_status
+        if not status:
+            return format_html('<span style="color:#aaa;">not attempted</span>')
+        colors = {
+            'generated': 'green',
+            'skipped': '#888',
+            'moderation': 'orange',
+            'download_error': 'red',
+            'api_error': 'red',
+            'error': 'red',
+        }
+        color = colors.get(status, '#888')
+        label = obj.get_illustration_status_display() or status
+        tip = obj.illustration_error or ''
+        if tip:
+            return format_html(
+                '<span style="color:{};" title="{}">{}</span>', color, tip[:200], label
+            )
+        return format_html('<span style="color:{};">{}</span>', color, label)
+    illustration_status_display.short_description = 'Illus. status'
 
     def illustration_preview(self, obj):
         if obj.illustration:

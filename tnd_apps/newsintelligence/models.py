@@ -140,6 +140,20 @@ class ArticleEnrichment(models.Model):
         help_text='AI-generated editorial engraving version of the featured image',
     )
     editorial_image_generated_at = models.DateTimeField(null=True, blank=True)
+    editorial_image_last_attempt = models.DateTimeField(null=True, blank=True)
+    editorial_image_status = models.CharField(
+        max_length=20, blank=True,
+        choices=[
+            ('generated', 'Generated'),
+            ('skipped', 'Skipped — no source image'),
+            ('moderation', 'Blocked by moderation'),
+            ('download_error', 'Source image download failed'),
+            ('api_error', 'OpenAI API error'),
+            ('error', 'Unexpected error'),
+        ],
+        help_text='Result of the last generation attempt',
+    )
+    editorial_image_error = models.TextField(blank=True, help_text='Error detail from last attempt')
 
     # ── Token tracking (for cost monitoring) ─────────────────────────────────
 
@@ -280,6 +294,20 @@ class DailyDigest(models.Model):
         help_text='One-sentence editorial caption for the illustration',
     )
     illustration_generated_at = models.DateTimeField(null=True, blank=True)
+    illustration_last_attempt = models.DateTimeField(null=True, blank=True)
+    illustration_status = models.CharField(
+        max_length=20, blank=True,
+        choices=[
+            ('generated', 'Generated'),
+            ('skipped', 'Skipped — no top story'),
+            ('moderation', 'Blocked by moderation'),
+            ('download_error', 'Source image download failed'),
+            ('api_error', 'OpenAI API error'),
+            ('error', 'Unexpected error'),
+        ],
+        help_text='Result of the last illustration generation attempt',
+    )
+    illustration_error = models.TextField(blank=True, help_text='Error detail from last attempt')
 
     # ── Social posting ────────────────────────────────────────────────────────
     twitter_thread_id = models.CharField(

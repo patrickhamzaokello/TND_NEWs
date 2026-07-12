@@ -199,6 +199,13 @@ def _call_openai_image_generate(prompt: str) -> bytes:
     raise ValueError('OpenAI returned neither b64_json nor url in image generate response')
 
 
+def _record_illustration(digest, status: str, error: str = ''):
+    digest.illustration_last_attempt = timezone.now()
+    digest.illustration_status = status
+    digest.illustration_error = error[:1000]
+    digest.save(update_fields=['illustration_last_attempt', 'illustration_status', 'illustration_error'])
+
+
 def generate_digest_illustration(digest) -> bool:
     """
     Generate an editorial illustration for a DailyDigest based on its top story.
@@ -214,6 +221,7 @@ def generate_digest_illustration(digest) -> bool:
     top_stories = digest.top_stories or []
     if not top_stories:
         logger.warning('generate_digest_illustration: digest %s has no top stories', digest.digest_date)
+        _record_illustration(digest, 'skipped', 'No top stories in digest')
         return False
 
     top = top_stories[0]
@@ -260,7 +268,13 @@ def generate_digest_illustration(digest) -> bool:
         digest.illustration.save(filename, ContentFile(result_bytes), save=False)
         digest.illustration_caption = caption
         digest.illustration_generated_at = timezone.now()
-        digest.save(update_fields=['illustration', 'illustration_caption', 'illustration_generated_at'])
+        digest.illustration_last_attempt = timezone.now()
+        digest.illustration_status = 'generated'
+        digest.illustration_error = ''
+        digest.save(update_fields=[
+            'illustration', 'illustration_caption', 'illustration_generated_at',
+            'illustration_last_attempt', 'illustration_status', 'illustration_error',
+        ])
 
         logger.info(
             'Digest illustration saved | date=%s caption="%s"',
@@ -277,11 +291,13 @@ def generate_digest_illustration(digest) -> bool:
                     'Digest illustration blocked by moderation | date=%s — skipping',
                     digest.digest_date,
                 )
+                _record_illustration(digest, 'moderation', str(e)[:500])
                 return False
         logger.exception(
             'Unexpected error generating digest illustration for %s: %s',
             digest.digest_date, e,
         )
+        _record_illustration(digest, 'error', str(e)[:500])
         raise
 
 
@@ -310,17 +326,21 @@ def _call_openai_image_edit_with_prompt(png_bytes: bytes, prompt: str) -> bytes:
 
 # ── Public API ────────────────────────────────────────────────────────────────
 
+def _record_editorial(enrichment, status: str, error: str = ''):
+    enrichment.editorial_image_last_attempt = timezone.now()
+    enrichment.editorial_image_status = status
+    enrichment.editorial_image_error = error[:1000]
+    enrichment.save(update_fields=[
+        'editorial_image_last_attempt', 'editorial_image_status', 'editorial_image_error'
+    ])
+
+
 def generate_editorial_image(enrichment) -> bool:
     """
     Generate an editorial-style image for the given ArticleEnrichment.
 
-    1. Downloads article.featured_image_url
-    2. Converts to PNG, resizes
-    3. Calls OpenAI gpt-image-1 edit API
-    4. Saves result to editorial_image field (media/editorial_images/)
-    5. Sets editorial_image_generated_at
-
-    Returns True on success, False on failure (errors are logged, not raised).
+    Returns True on success, False on skip/moderation (errors are logged, not raised
+    for permanent failures; re-raised for transient ones so Celery can retry).
     """
     article = enrichment.article
     source_url = article.featured_image_url
@@ -330,12 +350,10 @@ def generate_editorial_image(enrichment) -> bool:
             'generate_editorial_image: article %d has no featured_image_url — skipping',
             article.id,
         )
+        _record_editorial(enrichment, 'skipped', 'No featured_image_url on article')
         return False
 
-    logger.info(
-        'Generating editorial image | article=%d (%s)',
-        article.id, article.title[:60],
-    )
+    logger.info('Generating editorial image | article=%d (%s)', article.id, article.title[:60])
 
     try:
         raw = _download_image(source_url)
@@ -345,18 +363,23 @@ def generate_editorial_image(enrichment) -> bool:
         filename = f'{article.id}_{uuid.uuid4().hex[:8]}.png'
         enrichment.editorial_image.save(filename, ContentFile(result_bytes), save=False)
         enrichment.editorial_image_generated_at = timezone.now()
-        enrichment.save(update_fields=['editorial_image', 'editorial_image_generated_at'])
+        enrichment.editorial_image_last_attempt = timezone.now()
+        enrichment.editorial_image_status = 'generated'
+        enrichment.editorial_image_error = ''
+        enrichment.save(update_fields=[
+            'editorial_image', 'editorial_image_generated_at',
+            'editorial_image_last_attempt', 'editorial_image_status', 'editorial_image_error',
+        ])
 
-        logger.info(
-            'Editorial image saved | article=%d → %s',
-            article.id, enrichment.editorial_image.name,
-        )
+        logger.info('Editorial image saved | article=%d → %s', article.id, enrichment.editorial_image.name)
         return True
 
     except requests.HTTPError as e:
         logger.error('Failed to download source image for article %d: %s', article.id, e)
+        _record_editorial(enrichment, 'download_error', str(e))
     except ValueError as e:
         logger.error('Image processing error for article %d: %s', article.id, e)
+        _record_editorial(enrichment, 'api_error', str(e))
     except Exception as e:
         import openai as _openai
         if isinstance(e, _openai.BadRequestError):
@@ -369,11 +392,13 @@ def generate_editorial_image(enrichment) -> bool:
                     .get('categories', [])
                 )
                 logger.warning(
-                    'Editorial image blocked by OpenAI moderation | article=%d categories=%s — skipping permanently',
+                    'Editorial image blocked by moderation | article=%d categories=%s',
                     article.id, categories,
                 )
-                return False  # don't retry — moderation won't change
+                _record_editorial(enrichment, 'moderation', f'categories={categories}')
+                return False
         logger.exception('Unexpected error generating editorial image for article %d: %s', article.id, e)
-        raise  # re-raise so Celery can retry transient errors
+        _record_editorial(enrichment, 'error', str(e))
+        raise
 
     return False
