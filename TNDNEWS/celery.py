@@ -143,6 +143,21 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=25, hour='*/3'),  # :25
         'kwargs': {'section': 'business', 'get_full_content': True, 'max_articles': 20, 'max_pages': 2},
     },
+    'scrape-pulse-news': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_pulse_section',
+        'schedule': crontab(minute=40, hour='*/3'),  # :40 — 00:40, 03:40, 06:40 …
+        'kwargs': {'section': 'news', 'get_full_content': True, 'max_articles': 25},
+    },
+    'scrape-pulse-business': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_pulse_section',
+        'schedule': crontab(minute=45, hour='*/3'),  # :45
+        'kwargs': {'section': 'business', 'get_full_content': True, 'max_articles': 15},
+    },
+    'scrape-pulse-entertainment': {
+        'task': 'tnd_apps.news_scrapping.tasks.scrape_pulse_section',
+        'schedule': crontab(minute=15, hour='1-23/3'),  # offset hour to spread load
+        'kwargs': {'section': 'entertainment', 'get_full_content': True, 'max_articles': 15},
+    },
     'scrape-kawowo-home': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_kawowo_section',
         'schedule': crontab(minute=50, hour='*/3'),  # :50 — 00:50, 03:50, 06:50 …

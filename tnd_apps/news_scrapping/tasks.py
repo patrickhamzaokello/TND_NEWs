@@ -453,6 +453,107 @@ def scrape_observer_section(
         raise exc
 
 
+PULSE_SECTIONS: dict[str, str] = {
+    "news":          "https://www.pulse.ug/news",
+    "entertainment": "https://www.pulse.ug/entertainment",
+    "lifestyle":     "https://www.pulse.ug/lifestyle",
+    "business":      "https://www.pulse.ug/business",
+}
+
+
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    name="tnd_apps.news_scrapping.tasks.scrape_pulse_section",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def scrape_pulse_section(
+    self,
+    section: str = "news",
+    get_full_content: bool = True,
+    max_articles: int | None = None,
+    max_pages: int = 1,
+    start_page: int = 1,
+    source_name: str = "Pulse Uganda",
+):
+    """
+    Scrape a single Pulse Uganda section and persist articles to the database.
+
+    Args:
+        section:          One of PULSE_SECTIONS ('news', 'entertainment',
+                          'lifestyle', 'business')
+        get_full_content: Visit each article's detail page for full body text.
+        max_articles:     Hard cap on articles processed (None = unlimited).
+        max_pages:        Listing pages to paginate (keep at 1 — Pulse uses
+                          JS infinite scroll, only page 1 is server-rendered).
+        start_page:       Listing page to start from (1-indexed).
+        source_name:      NewsSource.name to look up / create.
+    """
+    from .pulse_scrapper import PulseUgScraper
+
+    section = section.lower()
+    if section not in PULSE_SECTIONS:
+        valid = ", ".join(PULSE_SECTIONS)
+        raise ValueError(f"Unknown Pulse section '{section}'. Valid: {valid}")
+
+    listing_url = PULSE_SECTIONS[section]
+    task_id = self.request.id
+
+    logger.info(
+        "Starting Pulse UG scrape | section=%s | url=%s | full_content=%s | "
+        "max_articles=%s | task_id=%s",
+        section, listing_url, get_full_content, max_articles, task_id,
+    )
+
+    try:
+        scraper = PulseUgScraper(
+            source_name=source_name,
+            headless=True,
+            default_category=section.title(),
+        )
+
+        result = scraper.scrape_and_save(
+            get_full_content=get_full_content,
+            max_articles=max_articles,
+            start_page=start_page,
+            max_pages=max_pages,
+            news_url=listing_url,
+        )
+
+        run = (
+            ScrapingRun.objects.filter(source=scraper.source)
+            .order_by("-started_at")
+            .first()
+        )
+        if run and not run.task_id:
+            run.task_id = task_id
+            run.save(update_fields=["task_id"])
+
+        logger.info(
+            "Pulse UG scrape complete | section=%s | added=%s | updated=%s | "
+            "skipped=%s | errors=%s | duration=%ss",
+            section,
+            result.get("articles_added", 0),
+            result.get("articles_updated", 0),
+            result.get("articles_skipped", 0),
+            result.get("errors", 0),
+            result.get("duration", "?"),
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(
+            "Pulse UG scrape FAILED | section=%s | task_id=%s | error=%s\n%s",
+            section, task_id, exc, traceback.format_exc(),
+        )
+        _mark_run_failed(task_id, str(exc))
+        if self.request.retries < self.max_retries:
+            raise self.retry(countdown=self.default_retry_delay, exc=exc)
+        raise exc
+
+
 KAWOWO_SECTIONS: dict[str, str] = {
     "home":       "https://kawowo.com",
     "football":   "https://kawowo.com/category/football",
