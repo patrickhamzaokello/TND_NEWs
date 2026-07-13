@@ -527,7 +527,7 @@ def scrape_pulse_section(
             .order_by("-started_at")
             .first()
         )
-        if run and not run.task_id:
+        if run and task_id and not run.task_id:
             run.task_id = task_id
             run.save(update_fields=["task_id"])
 
