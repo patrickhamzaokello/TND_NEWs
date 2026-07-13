@@ -96,7 +96,7 @@ Return this exact JSON structure:
     "regions": ["<Specific Ugandan district/region/place affected — use official names, e.g. 'Kasese District', 'Kampala Metropolitan'>"],
     "affected_groups": ["<Specific groups: e.g. 'boda-boda operators in Kampala', 'tea farmers in western Uganda', 'NSSF contributors'>"],
     "time_horizon": "immediate|weeks|months|unclear",
-    "impact_note": "<1-2 sentences: who specifically feels this and how — concrete and relatable. Think: students, job seekers, boda riders, market vendors, NSSF savers, mobile money users. Not generic.>"
+    "impact_note": "<1-2 sentences stating the concrete change and who it applies to, as fact: 'Boda riders in Kampala CBD face the new UGX 20,000 monthly permit from August 1.' Not 'this impacts riders' or 'riders may be concerned'.>"
   }},
 
   "bias_or_framing_notes": [
@@ -162,20 +162,22 @@ daily, worries about employment, tuition, rent, and mobile money. They are sharp
 spin, and will switch off the moment you sound like a government press release or a boring
 textbook. Write for them.
 
-TONE: Conversational, clear, and relatable. Like a well-informed friend catching you up on the
-news over lunch — not a news anchor, not a politician, not a lecturer. Engaging but still factual.
-No preaching. No doom. No boring bureaucratic language.
+TONE: Dense, factual, direct — like a premium news product (The Athletic, Axios, Particle).
+Clear enough for a reader scrolling their phone, but every sentence carries information:
+names, actions, figures, dates. Never a lecturer, never a moralizer, never a press release.
 
 WRITING STANDARDS:
-  - Get to the point fast. Lead with what happened and why it matters to a young Ugandan.
+  - Get to the point fast. Lead with what happened, who did it, and the specific consequence.
   - Use full names the first time. "Finance Minister Matia Kasaija" — after that, "Kasaija".
   - Specific numbers always beat vague ones. "UGX 4.3 trillion" not "a large sum".
   - Short sentences. One idea at a time. Active voice.
   - What was announced is an announcement — not a done deal. Say "the government says" not "the
     government will".
-  - Connect stories to real life: jobs, prices, university, transport, mobile money, healthcare.
-    If a policy affects boda riders, NSSF savers, or campus students — say so directly.
-  - Do not editorialize or moralize. Report what happened and let readers form their own opinions.
+  - Consequences are stated as concrete facts, not commentary: "the ruling leaves 4M NSSF
+    contributors unable to withdraw until Q3" — NOT "this raises concerns for savers".
+  - NEVER address the reader or tell them how to feel. NEVER use: "this matters because",
+    "this impacts", "raises fears", "raises questions", "highlights issues", "public trust",
+    "political stability", "keep an eye out", "ramifications for anyone".
   - Avoid: "it is worth noting", "stakeholders", "going forward", "in a bid to", "henceforth",
     "pursuant to", and any phrase that belongs in a government circular.
 
@@ -198,13 +200,13 @@ Trending entities over the past 7 days:
 Return this exact JSON structure:
 
 {{
-  "digest_text": "<{article_count_guidance}. Write for a young Ugandan scrolling their phone — get to the point fast and keep it engaging. FIRST PARAGRAPH — the biggest story of the day: what happened, who was involved, specific numbers or outcomes. SECOND PARAGRAPH — other notable stories from today and how they connect to each other or to everyday life. THIRD PARAGRAPH (if volume warrants) — what to keep an eye on: developing situations, upcoming decisions, or stories that are about to matter. FOURTH PARAGRAPH (if volume warrants) — one story that directly affects daily life (prices, jobs, transport, health, education) that may not be getting enough attention. Conversational tone throughout — clear sentences, no jargon, no government-circular language.>",
+  "digest_text": "<{article_count_guidance}. FIRST PARAGRAPH — the biggest story of the day: what happened, who did it, specific numbers and outcomes, current state. SECOND PARAGRAPH — other notable stories from today, each in one dense sentence with names and figures. THIRD PARAGRAPH (if volume warrants) — developing situations with concrete next steps: what decision is due, when, and by whom. FOURTH PARAGRAPH (if volume warrants) — one under-covered story that changes something concrete for daily life (prices, jobs, transport, health, education) — state what changes, not why readers should care. Every sentence carries information. No commentary, no addressing the reader, no 'keep an eye out'.>",
 
   "top_stories": [
     {{
       "article_id": <int — must match an article_id from the input>,
       "title": "<article title>",
-      "why_it_matters": "<1-2 sentences: what this means for ordinary Ugandans — especially young people, workers, students, or anyone whose daily life is touched by this. Specific and relatable, not abstract. No opinion words.>",
+      "why_it_matters": "<ONE dense sentence of concrete stakes from the reporting: what the actors seek, risk, or stand to change — stacked as specifics. Model: 'The ruling leaves Kivumbi's bail unenforced, his location undisclosed, and his lawyers seeking a court order compelling police to produce him.' NEVER 'this impacts', 'raises fears', 'public trust', or any reader-addressing.>",
       "importance_score": <int 1-10>
     }}
   ],
@@ -215,7 +217,7 @@ Return this exact JSON structure:
       "type": "person|organization|location",
       "mention_count": <int — from input data>,
       "sentiment_trend": "rising_positive|rising_negative|stable|declining",
-      "trend_note": "<1 sentence: WHY this entity keeps coming up and what the pattern signals for Uganda>"
+      "trend_note": "<1 factual sentence: the specific events driving this entity's mentions this week — names, actions, dates. No 'signals' or 'reflects' commentary.>"
     }}
   ],
 
@@ -254,12 +256,12 @@ Return this exact JSON structure:
   "under_radar_story": {{
     "article_id": <int — must match an article_id from the input>,
     "title": "<article title>",
-    "reason": "<Why this matters more than the coverage it is getting — who is affected, what is at stake, why editors likely buried it>"
+    "reason": "<1-2 sentences of concrete stakes: what this changes and for whom, stated as facts with names/numbers. E.g. 'The bird-guard installation covers 1,200km of lines in districts that lost power an average of 14 times last quarter.' No 'deserves more attention', no 'matters more than'.>"
   }},
 
-  "key_concern": "<The one thing from today's news that young Ugandans should know about. Specific and factual — name the people or institution, what happened, and what it means in practical terms. 1–2 complete sentences ending with a full stop. Example: 'URA missed its Q1 revenue target by 15%, which could lead to budget cuts affecting university funding and public health services in Q3.' No opinion words.>",
+  "key_concern": "<The most consequential development from today's news. Name the people or institution, what happened, and the concrete downstream effect with numbers and timelines where the reporting supports them. 1–2 complete sentences ending with a full stop. Example: 'URA missed its Q1 revenue target by 15%, putting the mid-year allocations for university funding and public health at risk of cuts in Q3.' Stated as fact, not warning — no 'should know', no 'concerning'.>",
 
-  "key_concern_short": "<One-sentence version of key_concern for social media. Maximum 180 characters. Complete sentence ending with a full stop. Punchy and clear — the kind of thing a young Ugandan would screenshot and share.>"
+  "key_concern_short": "<One-sentence version of key_concern for social media. Maximum 180 characters. Complete sentence ending with a full stop. Dense and specific — names and numbers, no commentary.>"
 }}
 
 RULES:
@@ -292,7 +294,11 @@ RULES:
   - Update naturally as the story develops — the title and summary should reflect the LATEST
     known state, not the first report.
   - Never invent facts not present in the input articles.
-  - Clear, conversational language — no bureaucratic phrases, no filler.
+  - TONE: dense, factual, specific — like a premium news product. Every sentence carries
+    information: names, actions, figures, dates. No commentary, no moralizing, no addressing
+    the reader, no abstract significance-talk ('raises questions', 'highlights tensions in
+    society', 'public trust'). Significance is expressed only as concrete consequences —
+    what breaks, what changes, what becomes possible or blocked.
 
 Return ONLY valid JSON. No markdown, no preamble."""
 
@@ -316,9 +322,9 @@ Return this exact JSON structure:
 
   "long_summary": "<2-4 paragraphs: the full story so far, combining all reporting chronologically. What happened first, what developed, where things stand now, and what remains unresolved. Include specific names, figures, and places. Attribute single-source claims.>",
 
-  "overview": "<WHY THIS MATTERS + BROADER CONTEXT: 1-2 paragraphs placing the event in context — the history that led here, related ongoing events, what is at stake, and who is affected. E.g. for 'Government announces new tax policy' the overview is 'The policy follows months of debate about revenue collection and economic reforms...'. Use the related earlier stories above for historical context where relevant. Distinct from the summary: the summary says what happened, the overview explains why it matters.>",
+  "overview": "<4-6 short paragraphs, each 1-2 sentences, separated by newlines. Paragraphs 1 to N-1: the factual chronology in detail — who did what, when, where, with full names, titles, figures, and specifics from the reporting. Each paragraph advances the story: the triggering event, the key actors and their specific actions, responses and denials, what each side is now seeking. FINAL paragraph: the significance — what this breaks, changes, or could complicate, stated as concrete consequences ('The suit marks a sharp break in a partnership that began in 2024... and could complicate OpenAI's hardware timetable, supplier contracts, and plans tied to a potential IPO'). Use the related earlier stories above for background where relevant. Everything grounded in the reporting — no invented context.>",
 
-  "why_it_matters": "<1-2 sentences: the single most direct consequence for ordinary Ugandans — especially young people, workers, students. Specific and relatable. No opinion words.>",
+  "why_it_matters": "<ONE dense sentence of concrete stakes drawn from the reporting: what the actors seek, risk, or stand to change — stacked as specifics. Model: 'Apple says the complaint seeks to stop misuse of proprietary designs, recover confidential materials, seek damages, protect supplier relationships, and defend its lead in device engineering.' NEVER address the reader, NEVER say 'this matters because' or 'this impacts', NEVER use abstract phrases like 'public trust', 'political stability', 'raises questions', 'highlights issues'. Only concrete, named stakes.>",
 
   "key_highlights": [
     {{
