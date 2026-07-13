@@ -8,7 +8,9 @@ from django.http import JsonResponse
 from django.db import connection
 
 from TNDNEWS import settings
-from tnd_apps.newsintelligence.views import digest_home, digest_subscribe, stories_page, story_page
+from tnd_apps.newsintelligence.views import (
+    digest_home, digest_subscribe, stories_page, stories_search_json, story_page,
+)
 
 schema_view = get_schema_view(
     openapi.Info(
@@ -54,6 +56,7 @@ urlpatterns = [
     path('digest/<str:digest_date>/', digest_home, name='digest-detail'),
     path('subscribe/', digest_subscribe, name='digest-subscribe'),
     path('stories/', stories_page, name='stories'),
+    path('stories/search.json', stories_search_json, name='stories-search-json'),
     path('story/<slug:slug>/', story_page, name='story-detail'),
 
     # Swagger endpoints (moved off the root)

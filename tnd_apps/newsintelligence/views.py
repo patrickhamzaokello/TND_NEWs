@@ -1125,3 +1125,35 @@ def story_page(request, slug):
         'related': related,
         'timeline': story.timeline_events.order_by('-event_date'),
     })
+
+
+def stories_search_json(request):
+    """Lightweight JSON search used by the entity modal on story pages."""
+    from django.http import JsonResponse
+
+    q = (request.GET.get('q') or '').strip()
+    if not q:
+        return JsonResponse({'results': [], 'total': 0})
+
+    qs = (
+        StoryCluster.objects.exclude(short_summary='')
+        .filter(
+            Q(title__icontains=q)
+            | Q(short_summary__icontains=q)
+            | Q(overview__icontains=q)
+            | Q(entities__icontains=q)
+        )
+        .order_by('-last_seen_at')
+    )
+    total = qs.count()
+    results = [
+        {
+            'slug': s.slug,
+            'title': s.title,
+            'short_summary': (s.short_summary or '')[:200],
+            'theme': s.primary_theme,
+            'last_seen_at': s.last_seen_at.isoformat(),
+        }
+        for s in qs[:6]
+    ]
+    return JsonResponse({'results': results, 'total': total})
