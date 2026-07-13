@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+{% load story_tags %}<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
@@ -67,6 +67,18 @@
   .related-item .r-dir { font-size: 11.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.08em; }
   .related-item .r-title { font-size: 15.5px; font-weight: 600; transition: color 0.15s; }
 
+  /* ── Entity tags ── */
+  a.entity {
+    text-decoration: none; border-bottom: 1.5px solid; border-radius: 2px;
+    padding: 0 1px; transition: background 0.15s;
+  }
+  a.entity-person { color: #1a5fb4; border-color: #a8c7e8; }
+  a.entity-person:hover { background: #e4eef9; }
+  a.entity-organization { color: #813d9c; border-color: #d3b8de; }
+  a.entity-organization:hover { background: #f1e8f5; }
+  a.entity-location { color: #26714a; border-color: #b3d9c4; }
+  a.entity-location:hover { background: #e5f3ec; }
+
   footer.site { border-top: 1px solid var(--line); padding: 24px; text-align: center; font-size: 13px; color: var(--faint); }
 
   @media (max-width: 640px) { h1 { font-size: 26px; } .lede { font-size: 17px; } }
@@ -91,15 +103,15 @@
     · updated {{ story.last_seen_at|timesince }} ago
     · {{ articles|length }} source article{{ articles|length|pluralize }}
   </div>
-  <h1>{{ story.title }}</h1>
-  {% if story.short_summary %}<p class="lede">{{ story.short_summary }}</p>{% endif %}
+  <h1>{{ story.title|tag_entities:story.entities }}</h1>
+  {% if story.short_summary %}<p class="lede">{{ story.short_summary|tag_entities:story.entities }}</p>{% endif %}
 
   {% if story.key_highlights %}
   <section>
     <h2 class="sans">Highlights</h2>
     <ul class="highlights">
       {% for h in story.key_highlights %}
-      <li>{{ h.text }}
+      <li>{{ h.text|tag_entities:story.entities }}
         {% if h.sources_count and h.sources_count > 1 %}<span class="src-count sans"> — {{ h.sources_count }} sources</span>{% endif %}
       </li>
       {% endfor %}
@@ -111,7 +123,7 @@
   <section>
     <h2 class="sans">Overview</h2>
     <div class="body-text">
-      {% for para in story.overview.splitlines %}{% if para %}<p>{{ para }}</p>{% endif %}{% endfor %}
+      {% for para in story.overview.splitlines %}{% if para %}<p>{{ para|tag_entities:story.entities }}</p>{% endif %}{% endfor %}
     </div>
   </section>
   {% endif %}
@@ -120,7 +132,7 @@
   <section>
     <h2 class="sans">The story so far</h2>
     <div class="body-text">
-      {% for para in story.long_summary.splitlines %}{% if para %}<p>{{ para }}</p>{% endif %}{% endfor %}
+      {% for para in story.long_summary.splitlines %}{% if para %}<p>{{ para|tag_entities:story.entities }}</p>{% endif %}{% endfor %}
     </div>
   </section>
   {% endif %}
@@ -128,7 +140,7 @@
   {% if story.why_this_matters %}
   <section>
     <h2 class="sans">Why it matters</h2>
-    <div class="why">{{ story.why_this_matters }}</div>
+    <div class="why">{{ story.why_this_matters|tag_entities:story.entities }}</div>
   </section>
   {% endif %}
 
