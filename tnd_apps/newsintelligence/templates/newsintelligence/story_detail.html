@@ -39,7 +39,6 @@
   ul.highlights li {
     position: relative; padding: 10px 0 10px 26px; font-size: 16px;
     border-bottom: 1px solid var(--line);
-    color: #ff5a36; /* sweet orange-red */
   }
   ul.highlights li::before {
     content: ''; position: absolute; left: 4px; top: 19px;
@@ -73,12 +72,11 @@
     text-decoration: none; border-bottom: 1.5px solid; border-radius: 2px;
     padding: 0 1px; transition: background 0.15s;
   }
-  a.entity-person { color: #1a5fb4; border-color: #a8c7e8; }
-  a.entity-person:hover { background: #e4eef9; }
-  a.entity-organization { color: #813d9c; border-color: #d3b8de; }
-  a.entity-organization:hover { background: #f1e8f5; }
-  a.entity-location { color: #26714a; border-color: #b3d9c4; }
-  a.entity-location:hover { background: #e5f3ec; }
+  a.entity {
+    color: #ff5a36; /* sweet orange-red */
+    border-color: #ffc4b5;
+  }
+  a.entity:hover { background: #fff0eb; }
 
   /* ── Entity modal ── */
   .modal-backdrop {
