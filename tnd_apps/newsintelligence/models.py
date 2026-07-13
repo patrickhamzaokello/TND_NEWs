@@ -636,6 +636,7 @@ class DigestSubscriber(models.Model):
     FREQUENCY_CHOICES = [
         ('morning_evening', 'Morning digest + evening articles (default)'),
         ('daily',           'Morning digest only'),
+        ('evening',         'Evening roundup only'),
         ('breaking', 'Breaking news only'),
     ]
 

@@ -86,6 +86,76 @@
   .prev-date { font-weight: 700; font-size: 15px; transition: color 0.15s; }
   .prev-teaser { font-size: 13.5px; color: var(--muted); margin-top: 3px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
 
+  /* ── Waiting hero + latest stories ── */
+  .waiting {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 22px 24px; margin-bottom: 28px;
+  }
+  .waiting .w-label {
+    display: inline-flex; align-items: center; gap: 8px;
+    font-size: 12px; letter-spacing: 0.12em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin-bottom: 6px;
+  }
+  .waiting .w-label .dot {
+    width: 8px; height: 8px; border-radius: 50%; background: var(--accent);
+    animation: pulse 1.6s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.25; } }
+  .waiting p { font-size: 15px; color: var(--muted); }
+
+  .latest { margin-bottom: 36px; }
+  .latest h2 {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--faint); font-weight: 600; margin-bottom: 14px;
+    padding-bottom: 10px; border-bottom: 1px solid var(--line);
+  }
+  .story-card { padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .story-card .sc-meta { font-size: 12px; color: var(--faint); margin-bottom: 4px; }
+  .story-card .sc-meta .theme { color: var(--accent); font-weight: 600; text-transform: capitalize; }
+  .story-card h3 {
+    font-size: 18px; line-height: 1.35; margin-bottom: 5px;
+    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .story-card p {
+    font-size: 14.5px; color: var(--muted);
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .yesterday-label {
+    display: inline-block; font-size: 12px; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--faint); font-weight: 600;
+    border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px;
+    margin-bottom: 10px;
+  }
+
+  /* ── Subscribe box ── */
+  .subscribe {
+    background: var(--card); border: 1px solid var(--line); border-radius: 10px;
+    padding: 20px; margin-bottom: 32px;
+  }
+  .subscribe h3 { font-size: 16px; margin-bottom: 4px; }
+  .subscribe .sub-note { font-size: 13px; color: var(--muted); margin-bottom: 14px; }
+  .subscribe input[type=email] {
+    width: 100%; padding: 10px 12px; font-size: 14px;
+    border: 1px solid var(--line); border-radius: 6px; margin-bottom: 12px;
+    font-family: inherit; background: var(--bg);
+  }
+  .subscribe input[type=email]:focus { outline: none; border-color: var(--accent); }
+  .freq { display: flex; flex-direction: column; gap: 8px; margin-bottom: 14px; }
+  .freq label {
+    display: flex; align-items: center; gap: 8px;
+    font-size: 13.5px; cursor: pointer; color: var(--ink);
+  }
+  .freq input { accent-color: var(--accent); }
+  .subscribe button {
+    width: 100%; padding: 10px; font-size: 14px; font-weight: 600;
+    background: var(--accent); color: #fff; border: none; border-radius: 6px;
+    cursor: pointer; font-family: inherit;
+  }
+  .subscribe button:hover { opacity: 0.92; }
+  .flash { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 20px; }
+  .flash.success { background: #eaf6ec; color: #1e6b30; border: 1px solid #cfe8d4; }
+  .flash.error { background: #fbeeea; color: #a33218; border: 1px solid #f0d5cc; }
+
   footer.site {
     border-top: 1px solid var(--line); padding: 24px; text-align: center;
     font-size: 13px; color: var(--faint);
@@ -106,7 +176,10 @@
 <header class="site sans">
   <div class="wrap">
     <a class="brand" href="/">NWITQ<span>.</span> News</a>
-    <div class="tagline">Uganda's daily news intelligence</div>
+    <nav style="font-size:14px;">
+      <a href="/" style="color:var(--accent);text-decoration:none;margin-right:18px;">Daily Brief</a>
+      <a href="/stories/" style="color:var(--muted);text-decoration:none;">Stories</a>
+    </nav>
   </div>
 </header>
 
@@ -114,7 +187,34 @@
 <div class="layout">
 
   <main>
+    {% if waiting_for_today %}
+    <div class="waiting sans">
+      <div class="w-label"><span class="dot"></span> Today's brief is on its way</div>
+      <p>Our newsroom AI is reading this morning's papers right now. The brief for today
+         lands at 8:00 AM — here's what's developing while you wait.</p>
+    </div>
+
+    {% if latest_stories %}
+    <div class="latest">
+      <h2 class="sans">Developing now</h2>
+      {% for story in latest_stories %}
+      <a class="story-card" href="/story/{{ story.slug }}/" style="display:block;text-decoration:none;color:inherit;">
+        <div class="sc-meta sans">
+          <span class="theme">{{ story.primary_theme }}</span>
+          · {{ story.last_seen_at|timesince }} ago
+          · {{ story.cluster_articles.count }} source{{ story.cluster_articles.count|pluralize }}
+        </div>
+        <h3>{{ story.title }}</h3>
+        <p>{{ story.short_summary }}</p>
+      </a>
+      {% endfor %}
+    </div>
+    {% endif %}
+
+    <span class="yesterday-label sans">Yesterday's brief</span>
+    {% else %}
     <div class="kicker sans">Daily Brief</div>
+    {% endif %}
     <h1 class="date">{{ digest.digest_date|date:"l, j F Y" }}</h1>
     <div class="meta sans">{{ digest.articles_analyzed }} articles analysed · NWITQ News Intelligence</div>
 
@@ -148,6 +248,27 @@
   </main>
 
   <aside>
+    {% if messages %}
+      {% for message in messages %}
+      <div class="flash sans {% if message.tags == 'error' %}error{% else %}success{% endif %}">{{ message }}</div>
+      {% endfor %}
+    {% endif %}
+
+    <div class="subscribe sans">
+      <h3>Get the brief in your inbox</h3>
+      <p class="sub-note">Free. Unsubscribe anytime from any email.</p>
+      <form method="post" action="/subscribe/">
+        {% csrf_token %}
+        <input type="email" name="email" placeholder="your@email.com" required>
+        <div class="freq">
+          <label><input type="radio" name="frequency" value="morning_evening" checked> Morning brief + evening roundup</label>
+          <label><input type="radio" name="frequency" value="daily"> Morning brief only</label>
+          <label><input type="radio" name="frequency" value="evening"> Evening roundup only</label>
+        </div>
+        <button type="submit">Subscribe</button>
+      </form>
+    </div>
+
     <h2 class="sans">Previous briefs</h2>
     {% for prev in previous %}
     <a class="prev-item" href="/digest/{{ prev.digest_date|date:'Y-m-d' }}/">

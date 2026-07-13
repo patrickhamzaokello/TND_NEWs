@@ -1009,8 +1009,119 @@ def digest_home(request, digest_date=None):
     if digest and digest.digest_text:
         paragraphs = [p.strip() for p in digest.digest_text.split('\n') if p.strip()]
 
+    # On the homepage, when today's digest isn't published yet, show the latest
+    # synthesized stories so the page never feels stale.
+    today = timezone.localdate()
+    waiting_for_today = (
+        digest_date is None and digest is not None and digest.digest_date < today
+    )
+    latest_stories = []
+    if waiting_for_today:
+        latest_stories = list(
+            StoryCluster.objects.filter(status='active')
+            .exclude(short_summary='')
+            .order_by('-last_seen_at')[:6]
+        )
+
     return render(request, 'newsintelligence/digest_home.html', {
         'digest': digest,
         'paragraphs': paragraphs,
         'previous': previous,
+        'waiting_for_today': waiting_for_today,
+        'latest_stories': latest_stories,
+    })
+
+
+def digest_subscribe(request):
+    """Public signup form handler on the digest homepage."""
+    from django.shortcuts import redirect
+    from django.contrib import messages
+    from .models import DigestSubscriber
+
+    if request.method != 'POST':
+        return redirect('/')
+
+    email = (request.POST.get('email') or '').strip().lower()
+    frequency = request.POST.get('frequency', 'morning_evening')
+    if frequency not in ('morning_evening', 'daily', 'evening'):
+        frequency = 'morning_evening'
+
+    if not email or '@' not in email:
+        messages.error(request, 'Please enter a valid email address.')
+        return redirect('/')
+
+    sub, created = DigestSubscriber.objects.get_or_create(
+        email=email,
+        defaults={'frequency': frequency, 'is_active': True, 'confirmed': True},
+    )
+    if not created:
+        # Existing subscriber: update schedule and reactivate
+        sub.frequency = frequency
+        sub.is_active = True
+        if not sub.confirmed:
+            sub.confirmed = True
+            sub.confirmed_at = timezone.now()
+        sub.save(update_fields=['frequency', 'is_active', 'confirmed', 'confirmed_at', 'updated_at'])
+        messages.success(request, 'Your subscription has been updated.')
+    else:
+        messages.success(request, "You're subscribed! Your first brief arrives with the next edition.")
+
+    return redirect('/')
+
+
+def stories_page(request):
+    """Public stories browser with search."""
+    from django.core.paginator import Paginator
+    from django.shortcuts import render
+
+    q = (request.GET.get('q') or '').strip()
+
+    qs = (
+        StoryCluster.objects.exclude(short_summary='')
+        .order_by('-last_seen_at')
+    )
+    if q:
+        qs = qs.filter(
+            Q(title__icontains=q)
+            | Q(short_summary__icontains=q)
+            | Q(overview__icontains=q)
+            | Q(entities__icontains=q)
+        )
+
+    paginator = Paginator(qs, 20)
+    page = paginator.get_page(request.GET.get('page'))
+
+    return render(request, 'newsintelligence/stories.html', {
+        'page': page,
+        'q': q,
+    })
+
+
+def story_page(request, slug):
+    """Public story detail page."""
+    from django.http import Http404
+    from django.shortcuts import render
+
+    story = (
+        StoryCluster.objects.filter(slug=slug)
+        .prefetch_related('timeline_events', 'cluster_articles__article__source')
+        .first()
+    )
+    if not story:
+        raise Http404('Story not found')
+
+    articles = (
+        story.cluster_articles
+        .select_related('article__source')
+        .order_by('-article__published_at')
+    )
+
+    related = list(story.outgoing_relations.select_related('to_cluster')) + \
+              list(story.incoming_relations.select_related('from_cluster'))
+
+    return render(request, 'newsintelligence/story_detail.html', {
+        'story': story,
+        'articles': articles,
+        'related': related,
+        'timeline': story.timeline_events.order_by('-event_date'),
     })

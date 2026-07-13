@@ -1,0 +1,187 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{ story.title }} — NWITQ News</title>
+<meta name="description" content="{{ story.short_summary|truncatechars:150 }}">
+<style>
+  :root {
+    --ink: #191919; --muted: #6b6b6b; --faint: #9a9a9a;
+    --line: #e8e8e4; --bg: #fbfbf9; --card: #ffffff; --accent: #c8401a;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Georgia, 'Times New Roman', serif; background: var(--bg); color: var(--ink); line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+
+  header.site { border-bottom: 1px solid var(--line); background: var(--card); padding: 18px 24px; }
+  header.site .wrap { max-width: 760px; margin: 0 auto; display: flex; align-items: baseline; justify-content: space-between; }
+  .brand { font-weight: 700; font-size: 20px; text-decoration: none; color: var(--ink); }
+  .brand span { color: var(--accent); }
+  nav.top a { text-decoration: none; color: var(--muted); font-size: 14px; margin-left: 18px; }
+  nav.top a:hover { color: var(--accent); }
+
+  .container { max-width: 760px; margin: 0 auto; padding: 36px 24px 72px; }
+
+  .sc-meta { font-size: 13px; color: var(--faint); margin-bottom: 10px; }
+  .sc-meta .theme { color: var(--accent); font-weight: 600; text-transform: capitalize; }
+  h1 { font-size: 32px; line-height: 1.25; margin-bottom: 14px; }
+  .lede { font-size: 18.5px; color: var(--muted); margin-bottom: 28px; }
+
+  section { margin-bottom: 32px; }
+  section > h2 {
+    font-size: 12px; letter-spacing: 0.14em; text-transform: uppercase;
+    color: var(--accent); font-weight: 600; margin-bottom: 12px;
+  }
+  .body-text p { font-size: 16.5px; margin-bottom: 16px; }
+
+  ul.highlights { list-style: none; }
+  ul.highlights li {
+    position: relative; padding: 10px 0 10px 26px; font-size: 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  ul.highlights li::before {
+    content: ''; position: absolute; left: 4px; top: 19px;
+    width: 8px; height: 8px; border-radius: 2px; background: var(--accent);
+  }
+  ul.highlights .src-count { font-size: 12px; color: var(--faint); }
+
+  .why {
+    padding: 18px 22px; border-left: 3px solid var(--accent);
+    background: var(--card); border-radius: 0 8px 8px 0; font-size: 16px;
+  }
+
+  .timeline-item { display: flex; gap: 16px; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .timeline-item .t-date { flex: 0 0 90px; font-size: 12.5px; color: var(--faint); padding-top: 3px; }
+  .timeline-item .t-body h4 { font-size: 15.5px; margin-bottom: 3px; }
+  .timeline-item .t-body p { font-size: 14px; color: var(--muted); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+
+  .source-item { display: block; text-decoration: none; color: inherit; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .source-item:hover .s-title { color: var(--accent); }
+  .source-item .s-outlet { font-size: 12px; color: var(--accent); font-weight: 600; text-transform: uppercase; letter-spacing: 0.06em; }
+  .source-item .s-title { font-size: 15.5px; transition: color 0.15s; }
+  .source-item .s-date { font-size: 12.5px; color: var(--faint); }
+
+  .related-item { display: block; text-decoration: none; color: inherit; padding: 12px 0; border-bottom: 1px solid var(--line); }
+  .related-item:hover .r-title { color: var(--accent); }
+  .related-item .r-dir { font-size: 11.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.08em; }
+  .related-item .r-title { font-size: 15.5px; font-weight: 600; transition: color 0.15s; }
+
+  footer.site { border-top: 1px solid var(--line); padding: 24px; text-align: center; font-size: 13px; color: var(--faint); }
+
+  @media (max-width: 640px) { h1 { font-size: 26px; } .lede { font-size: 17px; } }
+</style>
+</head>
+<body>
+
+<header class="site sans">
+  <div class="wrap">
+    <a class="brand" href="/">NWITQ<span>.</span> News</a>
+    <nav class="top">
+      <a href="/">Daily Brief</a>
+      <a href="/stories/">Stories</a>
+    </nav>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="sc-meta sans">
+    <span class="theme">{{ story.primary_theme }}</span>
+    · updated {{ story.last_seen_at|timesince }} ago
+    · {{ articles|length }} source article{{ articles|length|pluralize }}
+  </div>
+  <h1>{{ story.title }}</h1>
+  {% if story.short_summary %}<p class="lede">{{ story.short_summary }}</p>{% endif %}
+
+  {% if story.key_highlights %}
+  <section>
+    <h2 class="sans">Highlights</h2>
+    <ul class="highlights">
+      {% for h in story.key_highlights %}
+      <li>{{ h.text }}
+        {% if h.sources_count and h.sources_count > 1 %}<span class="src-count sans"> — {{ h.sources_count }} sources</span>{% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+  </section>
+  {% endif %}
+
+  {% if story.overview %}
+  <section>
+    <h2 class="sans">Overview</h2>
+    <div class="body-text">
+      {% for para in story.overview.splitlines %}{% if para %}<p>{{ para }}</p>{% endif %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if story.long_summary %}
+  <section>
+    <h2 class="sans">The story so far</h2>
+    <div class="body-text">
+      {% for para in story.long_summary.splitlines %}{% if para %}<p>{{ para }}</p>{% endif %}{% endfor %}
+    </div>
+  </section>
+  {% endif %}
+
+  {% if story.why_this_matters %}
+  <section>
+    <h2 class="sans">Why it matters</h2>
+    <div class="why">{{ story.why_this_matters }}</div>
+  </section>
+  {% endif %}
+
+  {% if timeline %}
+  <section>
+    <h2 class="sans">Timeline</h2>
+    {% for event in timeline %}
+    <div class="timeline-item">
+      <div class="t-date sans">{{ event.event_date|date:"j M Y" }}</div>
+      <div class="t-body">
+        <h4>{{ event.title }}</h4>
+        {% if event.description %}<p>{{ event.description }}</p>{% endif %}
+      </div>
+    </div>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if related %}
+  <section>
+    <h2 class="sans">Related stories</h2>
+    {% for rel in related %}
+      {% if rel.to_cluster_id != story.id %}
+      <a class="related-item" href="/story/{{ rel.to_cluster.slug }}/">
+        <div class="r-dir sans">Earlier — {{ rel.get_relation_type_display }}</div>
+        <div class="r-title">{{ rel.to_cluster.title }}</div>
+      </a>
+      {% else %}
+      <a class="related-item" href="/story/{{ rel.from_cluster.slug }}/">
+        <div class="r-dir sans">Later development</div>
+        <div class="r-title">{{ rel.from_cluster.title }}</div>
+      </a>
+      {% endif %}
+    {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if articles %}
+  <section>
+    <h2 class="sans">Coverage ({{ articles|length }})</h2>
+    {% for link in articles %}
+    <a class="source-item" href="{{ link.article.url }}" target="_blank" rel="noopener">
+      <div class="s-outlet sans">{{ link.article.source.name|default:"Unknown source" }}</div>
+      <div class="s-title">{{ link.article.title }}</div>
+      <div class="s-date sans">{{ link.article.published_at|date:"j M Y, H:i" }}</div>
+    </a>
+    {% endfor %}
+  </section>
+  {% endif %}
+
+</div>
+
+<footer class="site sans">NWITQ News — synthesized daily from Ugandan news sources.</footer>
+
+</body>
+</html>

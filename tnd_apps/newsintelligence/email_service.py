@@ -192,11 +192,11 @@ def send_digest_to_all(digest: DailyDigest) -> dict:
         logger.warning('Digest %s is not published — skipping', digest.digest_date)
         return {'sent': 0, 'failed': 0, 'total': 0}
 
-    # All active confirmed subscribers — morning goes to everyone (daily + all_day)
+    # Morning digest goes to everyone except evening-only subscribers
     subscribers = DigestSubscriber.objects.filter(
         is_active=True,
         confirmed=True,
-    ).exclude(last_digest_date=digest.digest_date)
+    ).exclude(frequency='evening').exclude(last_digest_date=digest.digest_date)
 
     total = subscribers.count()
     sent = failed = 0
@@ -313,7 +313,7 @@ def send_flash_update(slot: str) -> dict:
     subscribers = DigestSubscriber.objects.filter(
         is_active=True,
         confirmed=True,
-        frequency='morning_evening',
+        frequency__in=['morning_evening', 'evening'],
     ).exclude(last_digest_date=today, last_slot_sent=slot)
 
     total = subscribers.count()
