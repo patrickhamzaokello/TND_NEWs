@@ -4,11 +4,34 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% if q %}Search: {{ q }} — {% endif %}Stories — NWITQ News</title>
+<script>
+  (function () {
+    var t = localStorage.getItem('nwitq-theme');
+    if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
   :root {
     --ink: #191919; --muted: #6b6b6b; --faint: #9a9a9a;
     --line: #e8e8e4; --bg: #fbfbf9; --card: #ffffff; --accent: #c8401a;
   }
+  html[data-theme="dark"] {
+    --ink: #e8e5e0; --muted: #a49f96; --faint: #7a756c;
+    --line: #322f2a; --bg: #181613; --card: #211f1b; --accent: #ff6b47;
+  }
+  html { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+  html[data-theme="dark"] img { opacity: 0.9; }
+  .theme-toggle {
+    background: none; border: 1px solid var(--line); border-radius: 999px;
+    width: 34px; height: 34px; cursor: pointer; font-size: 16px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--muted); margin-left: 16px; vertical-align: middle;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  html[data-theme="light"] .theme-toggle .moon { display: none; }
+  html[data-theme="dark"] .theme-toggle .sun { display: none; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body { font-family: Georgia, 'Times New Roman', serif; background: var(--bg); color: var(--ink); line-height: 1.65; -webkit-font-smoothing: antialiased; }
   .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
@@ -62,9 +85,10 @@
 <header class="site sans">
   <div class="wrap">
     <a class="brand" href="/">NWITQ<span>.</span> News</a>
-    <nav class="top">
+    <nav class="top" style="display:flex;align-items:center;">
       <a href="/">Daily Brief</a>
       <a href="/stories/" class="active">Stories</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span class="sun">☀️</span><span class="moon">🌙</span></button>
     </nav>
   </div>
 </header>
@@ -110,6 +134,14 @@
 </div>
 
 <footer class="site sans">NWITQ News — synthesized daily from Ugandan news sources.</footer>
+
+<script>
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('nwitq-theme', next);
+  });
+</script>
 
 </body>
 </html>

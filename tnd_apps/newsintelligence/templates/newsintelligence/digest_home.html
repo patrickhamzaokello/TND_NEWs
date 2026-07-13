@@ -5,6 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>{% if digest %}NWITQ Daily Brief — {{ digest.digest_date|date:"j F Y" }}{% else %}NWITQ Daily Brief{% endif %}</title>
 <meta name="description" content="{% if digest %}{{ digest.key_concern_short|default:digest.key_concern|truncatechars:150 }}{% else %}Uganda's daily news intelligence brief.{% endif %}">
+<script>
+  // Set theme before first paint to avoid flash
+  (function () {
+    var t = localStorage.getItem('nwitq-theme');
+    if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
 <style>
   :root {
     --ink: #191919;
@@ -14,7 +22,33 @@
     --bg: #fbfbf9;
     --card: #ffffff;
     --accent: #c8401a;
+    --flash-ok-bg: #eaf6ec; --flash-ok-ink: #1e6b30; --flash-ok-line: #cfe8d4;
+    --flash-err-bg: #fbeeea; --flash-err-ink: #a33218; --flash-err-line: #f0d5cc;
   }
+  html[data-theme="dark"] {
+    --ink: #e8e5e0;
+    --muted: #a49f96;
+    --faint: #7a756c;
+    --line: #322f2a;
+    --bg: #181613;
+    --card: #211f1b;
+    --accent: #ff6b47;
+    --flash-ok-bg: #1d2b20; --flash-ok-ink: #7fc78f; --flash-ok-line: #2c4232;
+    --flash-err-bg: #33201b; --flash-err-ink: #e58a72; --flash-err-line: #4a2d24;
+  }
+  html { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+  html[data-theme="dark"] img { opacity: 0.9; }
+
+  .theme-toggle {
+    background: none; border: 1px solid var(--line); border-radius: 999px;
+    width: 34px; height: 34px; cursor: pointer; font-size: 16px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--muted); margin-left: 16px; vertical-align: middle;
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  html[data-theme="light"] .theme-toggle .moon { display: none; }
+  html[data-theme="dark"] .theme-toggle .sun { display: none; }
   * { margin: 0; padding: 0; box-sizing: border-box; }
   body {
     font-family: Georgia, 'Times New Roman', serif;
@@ -153,8 +187,8 @@
   }
   .subscribe button:hover { opacity: 0.92; }
   .flash { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 20px; }
-  .flash.success { background: #eaf6ec; color: #1e6b30; border: 1px solid #cfe8d4; }
-  .flash.error { background: #fbeeea; color: #a33218; border: 1px solid #f0d5cc; }
+  .flash.success { background: var(--flash-ok-bg); color: var(--flash-ok-ink); border: 1px solid var(--flash-ok-line); }
+  .flash.error { background: var(--flash-err-bg); color: var(--flash-err-ink); border: 1px solid var(--flash-err-line); }
 
   footer.site {
     border-top: 1px solid var(--line); padding: 24px; text-align: center;
@@ -176,9 +210,10 @@
 <header class="site sans">
   <div class="wrap">
     <a class="brand" href="/">NWITQ<span>.</span> News</a>
-    <nav style="font-size:14px;">
+    <nav style="font-size:14px;display:flex;align-items:center;">
       <a href="/" style="color:var(--accent);text-decoration:none;margin-right:18px;">Daily Brief</a>
       <a href="/stories/" style="color:var(--muted);text-decoration:none;">Stories</a>
+      <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode" title="Toggle dark mode"><span class="sun">☀️</span><span class="moon">🌙</span></button>
     </nav>
   </div>
 </header>
@@ -290,6 +325,14 @@
 <footer class="site sans">
   NWITQ News — synthesized daily from Ugandan news sources.
 </footer>
+
+<script>
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('nwitq-theme', next);
+  });
+</script>
 
 </body>
 </html>
