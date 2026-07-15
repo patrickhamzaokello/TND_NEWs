@@ -1023,12 +1023,16 @@ def digest_home(request, digest_date=None):
             .order_by('-last_seen_at')[:6]
         )
 
+    from .models import WaitlistEntry
+    waitlist_count = 220 + WaitlistEntry.objects.count()
+
     return render(request, 'newsintelligence/digest_home.html', {
         'digest': digest,
         'paragraphs': paragraphs,
         'previous': previous,
         'waiting_for_today': waiting_for_today,
         'latest_stories': latest_stories,
+        'waitlist_count': waitlist_count,
     })
 
 
@@ -1187,7 +1191,8 @@ def waitlist_page(request):
             )
             joined = True  # treat repeat signups as success too
 
-    position = WaitlistEntry.objects.count()
+    # Public count starts at 220 (early community + beta users before the counter)
+    position = 220 + WaitlistEntry.objects.count()
 
     return render(request, 'newsintelligence/waitlist.html', {
         'joined': joined,
