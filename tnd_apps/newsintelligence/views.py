@@ -1011,10 +1011,34 @@ def digest_home(request, digest_date=None):
 
     # On the homepage, when today's digest isn't published yet, show the latest
     # synthesized stories so the page never feels stale.
-    today = timezone.localdate()
+    # All "today" logic uses Uganda time (EAT), not the server's UTC clock.
+    from zoneinfo import ZoneInfo
+    now_eat = timezone.now().astimezone(ZoneInfo('Africa/Kampala'))
+    today = now_eat.date()
+
     waiting_for_today = (
         digest_date is None and digest is not None and digest.digest_date < today
     )
+
+    waiting_message = ''
+    digest_label = ''
+    if waiting_for_today:
+        if now_eat.hour < 8:
+            waiting_message = (
+                "We're reading this morning's papers right now. Today's brief "
+                "lands at 8:00 AM — here's what's developing while you wait."
+            )
+        else:
+            waiting_message = (
+                "Today's brief is still in the works — it usually lands by "
+                "8:00 AM. Here's what's developing in the meantime."
+            )
+        days_old = (today - digest.digest_date).days
+        if days_old == 1:
+            digest_label = "Yesterday's brief"
+        else:
+            digest_label = f"Brief from {digest.digest_date.strftime('%-d %B')}"
+
     latest_stories = []
     if waiting_for_today:
         latest_stories = list(
@@ -1031,6 +1055,8 @@ def digest_home(request, digest_date=None):
         'paragraphs': paragraphs,
         'previous': previous,
         'waiting_for_today': waiting_for_today,
+        'waiting_message': waiting_message,
+        'digest_label': digest_label,
         'latest_stories': latest_stories,
         'waitlist_count': waitlist_count,
     })
@@ -1082,6 +1108,10 @@ def stories_page(request):
 
     qs = (
         StoryCluster.objects.exclude(short_summary='')
+        .annotate(
+            num_articles=Count('cluster_articles', distinct=True),
+            num_sources=Count('cluster_articles__article__source', distinct=True),
+        )
         .order_by('-last_seen_at')
     )
     if q:
