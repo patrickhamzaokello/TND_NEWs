@@ -773,3 +773,33 @@ class EnrichmentRun(models.Model):
     class Meta:
         db_table = 'enrichment_runs'
         ordering = ['-started_at']
+
+
+class WaitlistEntry(models.Model):
+    """
+    Waitlist signups for the NWITQ platform launch — one unified view of
+    Ugandan news, analyzed across all sources.
+    """
+    email = models.EmailField(unique=True)
+    name = models.CharField(max_length=120, blank=True)
+    interest = models.CharField(
+        max_length=30, blank=True,
+        choices=[
+            ('reader', 'Staying informed'),
+            ('professional', 'Work / research'),
+            ('developer', 'API access'),
+            ('other', 'Other'),
+        ],
+        help_text='What they want the platform for',
+    )
+    referrer = models.CharField(max_length=300, blank=True, help_text='HTTP referrer at signup')
+    invited = models.BooleanField(default=False)
+    invited_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        db_table = 'waitlist_entries'
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return self.email

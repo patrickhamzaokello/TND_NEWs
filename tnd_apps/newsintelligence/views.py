@@ -1157,3 +1157,40 @@ def stories_search_json(request):
         for s in qs[:6]
     ]
     return JsonResponse({'results': results, 'total': total})
+
+
+def waitlist_page(request):
+    """Waitlist landing page + signup handler."""
+    from django.shortcuts import render
+    from .models import WaitlistEntry
+
+    joined = False
+    error = ''
+
+    if request.method == 'POST':
+        email = (request.POST.get('email') or '').strip().lower()
+        name = (request.POST.get('name') or '').strip()[:120]
+        interest = request.POST.get('interest', '')
+        if interest not in ('reader', 'professional', 'developer', 'other'):
+            interest = ''
+
+        if not email or '@' not in email:
+            error = 'Please enter a valid email address.'
+        else:
+            _, created = WaitlistEntry.objects.get_or_create(
+                email=email,
+                defaults={
+                    'name': name,
+                    'interest': interest,
+                    'referrer': (request.META.get('HTTP_REFERER') or '')[:300],
+                },
+            )
+            joined = True  # treat repeat signups as success too
+
+    position = WaitlistEntry.objects.count()
+
+    return render(request, 'newsintelligence/waitlist.html', {
+        'joined': joined,
+        'error': error,
+        'position': position,
+    })

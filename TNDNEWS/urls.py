@@ -10,6 +10,7 @@ from django.db import connection
 from TNDNEWS import settings
 from tnd_apps.newsintelligence.views import (
     digest_home, digest_subscribe, stories_page, stories_search_json, story_page,
+    waitlist_page,
 )
 
 schema_view = get_schema_view(
@@ -55,6 +56,7 @@ urlpatterns = [
     path('', digest_home, name='digest-home'),
     path('digest/<str:digest_date>/', digest_home, name='digest-detail'),
     path('subscribe/', digest_subscribe, name='digest-subscribe'),
+    path('waitlist/', waitlist_page, name='waitlist'),
     path('stories/', stories_page, name='stories'),
     path('stories/search.json', stories_search_json, name='stories-search-json'),
     path('story/<slug:slug>/', story_page, name='story-detail'),

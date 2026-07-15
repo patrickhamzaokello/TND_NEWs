@@ -18,6 +18,7 @@ from .models import (
     StoryClusterRelation,
     StoryTimelineEvent,
     StoryVersion,
+    WaitlistEntry,
 )
 
 
@@ -495,3 +496,20 @@ class EnrichmentRunAdmin(admin.ModelAdmin):
         'total_input_tokens', 'total_output_tokens'
     )
     ordering = ('-started_at',)
+
+
+@admin.register(WaitlistEntry)
+class WaitlistEntryAdmin(admin.ModelAdmin):
+    list_display = ('email', 'name', 'interest', 'invited', 'created_at')
+    list_filter = ('interest', 'invited')
+    search_fields = ('email', 'name')
+    readonly_fields = ('referrer', 'created_at')
+    ordering = ('-created_at',)
+    actions = ['mark_invited']
+
+    @admin.action(description='Mark selected as invited')
+    def mark_invited(self, request, queryset):
+        updated = queryset.filter(invited=False).update(
+            invited=True, invited_at=timezone.now()
+        )
+        self.message_user(request, f'{updated} entr(ies) marked invited.')

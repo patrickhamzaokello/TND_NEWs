@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Join the waitlist — NWITQ News</title>
+<meta name="description" content="Every Ugandan news source, analyzed and presented as one. Join the waitlist for early access.">
+<script>
+  (function () {
+    var t = localStorage.getItem('nwitq-theme');
+    if (!t) t = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-theme', t);
+  })();
+</script>
+<style>
+  :root {
+    --ink: #191919; --muted: #6b6b6b; --faint: #9a9a9a;
+    --line: #e8e8e4; --bg: #fbfbf9; --card: #ffffff; --accent: #c8401a;
+    --flash-err-bg: #fbeeea; --flash-err-ink: #a33218; --flash-err-line: #f0d5cc;
+  }
+  html[data-theme="dark"] {
+    --ink: #e8e5e0; --muted: #a49f96; --faint: #7a756c;
+    --line: #322f2a; --bg: #181613; --card: #211f1b; --accent: #ff6b47;
+    --flash-err-bg: #33201b; --flash-err-ink: #e58a72; --flash-err-line: #4a2d24;
+  }
+  html { color-scheme: light; }
+  html[data-theme="dark"] { color-scheme: dark; }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: Georgia, 'Times New Roman', serif; background: var(--bg); color: var(--ink); line-height: 1.65; -webkit-font-smoothing: antialiased; }
+  .sans { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; }
+
+  header.site { border-bottom: 1px solid var(--line); background: var(--card); padding: 18px 24px; }
+  header.site .wrap { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+  .brand { font-weight: 700; font-size: 20px; text-decoration: none; color: var(--ink); }
+  .brand span { color: var(--accent); }
+  .theme-toggle {
+    background: none; border: 1px solid var(--line); border-radius: 999px;
+    width: 34px; height: 34px; cursor: pointer; font-size: 16px; line-height: 1;
+    display: inline-flex; align-items: center; justify-content: center; color: var(--muted);
+  }
+  .theme-toggle:hover { color: var(--accent); border-color: var(--accent); }
+  html[data-theme="light"] .theme-toggle .moon { display: none; }
+  html[data-theme="dark"] .theme-toggle .sun { display: none; }
+
+  .container { max-width: 640px; margin: 0 auto; padding: 56px 24px 80px; }
+
+  .kicker { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 14px; }
+  h1 { font-size: 40px; line-height: 1.15; margin-bottom: 18px; }
+  h1 em { font-style: italic; color: var(--accent); }
+  .sub { font-size: 18px; color: var(--muted); margin-bottom: 40px; }
+
+  .how { margin-bottom: 44px; }
+  .how-item { display: flex; gap: 16px; padding: 16px 0; border-bottom: 1px solid var(--line); }
+  .how-item .n {
+    flex: 0 0 34px; height: 34px; border-radius: 50%; background: var(--accent); color: #fff;
+    display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 15px;
+  }
+  .how-item h3 { font-size: 16.5px; margin-bottom: 2px; }
+  .how-item p { font-size: 14.5px; color: var(--muted); }
+
+  .signup {
+    background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+    padding: 28px;
+  }
+  .signup h2 { font-size: 20px; margin-bottom: 4px; }
+  .signup .s-note { font-size: 14px; color: var(--muted); margin-bottom: 18px; }
+  .signup input[type=email], .signup input[type=text], .signup select {
+    width: 100%; padding: 12px 14px; font-size: 15px; font-family: inherit;
+    border: 1px solid var(--line); border-radius: 8px; background: var(--bg);
+    color: var(--ink); margin-bottom: 12px;
+  }
+  .signup input:focus, .signup select:focus { outline: none; border-color: var(--accent); }
+  .signup button {
+    width: 100%; padding: 13px; font-size: 15px; font-weight: 700; border: none;
+    border-radius: 8px; background: var(--accent); color: #fff; cursor: pointer;
+  }
+  .signup button:hover { opacity: 0.92; }
+  .error { padding: 12px 16px; border-radius: 8px; font-size: 14px; margin-bottom: 14px; background: var(--flash-err-bg); color: var(--flash-err-ink); border: 1px solid var(--flash-err-line); }
+
+  .success { text-align: center; padding: 24px 0; }
+  .success .check { font-size: 44px; margin-bottom: 10px; }
+  .success h2 { font-size: 22px; margin-bottom: 8px; }
+  .success p { font-size: 15.5px; color: var(--muted); }
+  .success .count { color: var(--accent); font-weight: 700; }
+  .success .links { margin-top: 20px; }
+  .success .links a { color: var(--accent); font-weight: 600; text-decoration: none; font-size: 14.5px; }
+
+  .social-proof { text-align: center; margin-top: 22px; font-size: 13.5px; color: var(--faint); }
+
+  /* ── FAQ ── */
+  .faq { margin-top: 52px; }
+  .faq > h2 { font-size: 24px; margin-bottom: 4px; }
+  .faq .faq-sub { font-size: 14px; color: var(--faint); margin-bottom: 18px; }
+  .faq details {
+    border-bottom: 1px solid var(--line);
+  }
+  .faq summary {
+    cursor: pointer; padding: 16px 28px 16px 0; font-size: 17px; font-weight: 600;
+    list-style: none; position: relative;
+  }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary::after {
+    content: '+'; position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+    font-size: 22px; color: var(--accent); font-weight: 400;
+  }
+  .faq details[open] summary::after { content: '–'; }
+  .faq .faq-body { padding: 0 0 18px; font-size: 15px; color: var(--muted); }
+  .faq .faq-body p { margin-bottom: 10px; }
+  .faq .faq-body ul { margin: 0 0 10px 20px; }
+  .faq .faq-body li { margin-bottom: 8px; }
+  .faq .faq-body b { color: var(--ink); }
+  .faq .faq-punch { font-style: italic; color: var(--ink); }
+  .faq-contact { margin-top: 20px; font-size: 14.5px; color: var(--muted); }
+  .faq-contact a { color: var(--accent); font-weight: 600; text-decoration: none; }
+
+  footer.site { border-top: 1px solid var(--line); padding: 24px; text-align: center; font-size: 13px; color: var(--faint); }
+
+  @media (max-width: 560px) { h1 { font-size: 31px; } }
+</style>
+</head>
+<body>
+
+<header class="site sans">
+  <div class="wrap">
+    <a class="brand" href="/">NWITQ<span>.</span> News</a>
+    <button class="theme-toggle" id="themeToggle" aria-label="Toggle dark mode"><span class="sun">☀️</span><span class="moon">🌙</span></button>
+  </div>
+</header>
+
+<div class="container">
+
+  <div class="kicker sans">Early access</div>
+  <h1>Every Ugandan news source. <em>One story.</em></h1>
+  <p class="sub">
+    Daily Monitor, New Vision, NilePost, Observer, Chimp Reports, Pulse and more —
+    read, compared, and analyzed by AI, then presented as one clear story.
+    No duplicate headlines. No single outlet's spin. Just what happened.
+  </p>
+
+  <div class="how">
+    <div class="how-item">
+      <div class="n sans">1</div>
+      <div>
+        <h3>Stories, not headlines</h3>
+        <p class="sans">Ten outlets covering the same event become one story — with the facts every source agrees on, and the claims only one is making.</p>
+      </div>
+    </div>
+    <div class="how-item">
+      <div class="n sans">2</div>
+      <div>
+        <h3>Stories that follow themselves</h3>
+        <p class="sans">A court ruling months after the arrest? It lands in the same story, with the full timeline. You never lose the thread.</p>
+      </div>
+    </div>
+    <div class="how-item">
+      <div class="n sans">3</div>
+      <div>
+        <h3>A daily brief that respects your time</h3>
+        <p class="sans">Two minutes every morning: the day's most consequential news with names, numbers, and what changes for you.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="signup sans" id="signup">
+    {% if joined %}
+    <div class="success">
+      <div class="check">🎉</div>
+      <h2>You're on the list</h2>
+      <p>You're one of <span class="count">{{ position }}</span> people waiting for launch.
+         We'll email you the moment early access opens.</p>
+      <div class="links">
+        <a href="/">Read today's brief while you wait →</a>
+      </div>
+    </div>
+    {% else %}
+    <h2>Join the waitlist</h2>
+    <p class="s-note">Be first in line when the platform launches.</p>
+    {% if error %}<div class="error">{{ error }}</div>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <input type="text" name="name" placeholder="Your name (optional)">
+      <input type="email" name="email" placeholder="your@email.com" required>
+      <select name="interest">
+        <option value="reader">I want to stay informed</option>
+        <option value="professional">For work or research</option>
+        <option value="developer">I'm interested in the API</option>
+        <option value="other">Something else</option>
+      </select>
+      <button type="submit">Get early access</button>
+    </form>
+    {% if position %}<div class="social-proof">{{ position }} people already waiting</div>{% endif %}
+    {% endif %}
+  </div>
+
+  <div class="faq sans">
+    <h2>Frequently Asked Questions</h2>
+    <p class="faq-sub">Based on community feedback and questions from early users</p>
+
+    <details>
+      <summary>How is this different from Google's AI Overview?</summary>
+      <div class="faq-body">
+        <p>Google's AI Overview answers a single search query with a one-time summary. This is different in a few key ways:</p>
+        <ul>
+          <li><b>Not query-based</b> — this is a standing page for one story that keeps updating as new reports come in over days, not a one-off answer.</li>
+          <li><b>Source-confirmation counts</b> — each fact shows how many outlets confirm it, rather than one blended summary.</li>
+          <li><b>Timeline, not a snapshot</b> — you see how the story evolved (first reports → official response → follow-ups), not just the current state.</li>
+          <li><b>Curated for Ugandan outlets specifically</b> — Monitor, Nile Post, NBS, Chimp Reports, etc. — not generic web results.</li>
+        </ul>
+        <p class="faq-punch">Google shows you an answer. This tracks a story.</p>
+      </div>
+    </details>
+
+    <details>
+      <summary>Is this different from what BBC, CNN, or Al Jazeera do with live blogs on big stories?</summary>
+      <div class="faq-body">
+        <p>Similar concept — an evolving timeline — but built differently:</p>
+        <ul>
+          <li><b>Live blogs are written by one newsroom</b> as their own reporters cover events. This aggregates reporting from multiple independent outlets covering the same story.</li>
+          <li><b>Cross-source confirmation</b> — a live blog gives you one outlet's version of events. This shows how many separate outlets confirm each fact, so readers can gauge reliability.</li>
+          <li><b>Built for local coverage gaps</b> — BBC/CNN can do this because they staff a story directly. This works for stories where no single outlet has full coverage, but several together do.</li>
+        </ul>
+      </div>
+    </details>
+
+    <details>
+      <summary>Why does the timeline show the most recent event first instead of the first event first?</summary>
+      <div class="faq-body">
+        <p>Newest-first follows the news-feed convention (like Twitter or live blogs), so returning readers immediately see what's new without scrolling past what they've already read.</p>
+        <p>That said, for first-time readers coming to a story cold, chronological order (oldest → newest) reads more naturally as a story arc. This is on the roadmap — likely as a toggle so readers can choose either view.</p>
+      </div>
+    </details>
+
+    <p class="faq-contact">Have a question or suggestion? <a href="mailto:contact@mwonyanews.com">Send it to us</a>.</p>
+  </div>
+
+</div>
+
+<footer class="site sans">NWITQ News — synthesized daily from Ugandan news sources.</footer>
+
+<script>
+  document.getElementById('themeToggle').addEventListener('click', function () {
+    var next = document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('nwitq-theme', next);
+  });
+</script>
+
+</body>
+</html>
