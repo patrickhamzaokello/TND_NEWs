@@ -1153,11 +1153,22 @@ def story_page(request, slug):
     related = list(story.outgoing_relations.select_related('to_cluster')) + \
               list(story.incoming_relations.select_related('from_cluster'))
 
+    # Share-preview image: most relevant member article with a featured image
+    card_link = (
+        story.cluster_articles
+        .exclude(article__featured_image_url='')
+        .order_by('-relevance_score')
+        .select_related('article')
+        .first()
+    )
+    card_image = card_link.article.featured_image_url if card_link else ''
+
     return render(request, 'newsintelligence/story_detail.html', {
         'story': story,
         'articles': articles,
         'related': related,
         'timeline': story.timeline_events.order_by('-event_date'),
+        'card_image': card_image,
     })
 
 

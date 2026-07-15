@@ -8,6 +8,16 @@
 <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
 <title>{% if digest %}NWITQ Daily Brief — {{ digest.digest_date|date:"j F Y" }}{% else %}NWITQ Daily Brief{% endif %}</title>
 <meta name="description" content="{% if digest %}{{ digest.key_concern_short|default:digest.key_concern|truncatechars:150 }}{% else %}Uganda's daily news intelligence brief.{% endif %}">
+<meta property="og:site_name" content="NWITQ News">
+<meta property="og:type" content="website">
+<meta property="og:title" content="{% if digest %}NWITQ Daily Brief — {{ digest.digest_date|date:'j F Y' }}{% else %}NWITQ Daily Brief{% endif %}">
+<meta property="og:description" content="{% if digest %}{{ digest.key_concern_short|default:digest.key_concern|truncatechars:200 }}{% else %}Uganda's trusted news sources, compared and presented as one story.{% endif %}">
+<meta property="og:url" content="{{ request.build_absolute_uri }}">
+{% if digest.illustration %}<meta property="og:image" content="{{ request.scheme }}://{{ request.get_host }}{{ digest.illustration.url }}">
+<meta name="twitter:card" content="summary_large_image">
+{% else %}<meta name="twitter:card" content="summary">
+{% endif %}<meta name="twitter:title" content="{% if digest %}NWITQ Daily Brief — {{ digest.digest_date|date:'j F Y' }}{% else %}NWITQ Daily Brief{% endif %}">
+<meta name="twitter:description" content="{% if digest %}{{ digest.key_concern_short|default:digest.key_concern|truncatechars:200 }}{% else %}Uganda's trusted news sources, compared and presented as one story.{% endif %}">
 <script>
   // Set theme before first paint to avoid flash
   (function () {

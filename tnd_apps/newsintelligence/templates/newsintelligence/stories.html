@@ -7,6 +7,15 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Raleway:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap" rel="stylesheet">
 <title>{% if q %}Search: {{ q }} — {% endif %}Stories — NWITQ News</title>
+<meta name="description" content="Uganda's developing stories — every event tracked across trusted outlets, with the facts each source confirms and the full timeline.">
+<meta property="og:site_name" content="NWITQ News">
+<meta property="og:type" content="website">
+<meta property="og:title" content="Stories — NWITQ News">
+<meta property="og:description" content="Uganda's developing stories — every event tracked across trusted outlets, with the facts each source confirms and the full timeline.">
+<meta property="og:url" content="{{ request.build_absolute_uri }}">
+<meta name="twitter:card" content="summary">
+<meta name="twitter:title" content="Stories — NWITQ News">
+<meta name="twitter:description" content="Uganda's developing stories — every event tracked across trusted outlets, with the facts each source confirms and the full timeline.">
 <script>
   (function () {
     var t = localStorage.getItem('nwitq-theme');
