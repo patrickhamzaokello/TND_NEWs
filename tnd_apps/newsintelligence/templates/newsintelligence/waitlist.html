@@ -33,7 +33,7 @@
   .sans { font-family: 'Raleway', -apple-system, BlinkMacSystemFont, sans-serif; }
 
   header.site { border-bottom: 1px solid var(--line); background: var(--card); padding: 18px 24px; }
-  header.site .wrap { max-width: 640px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
+  header.site .wrap { max-width: 1020px; margin: 0 auto; display: flex; align-items: center; justify-content: space-between; }
   .brand { font-weight: 700; font-size: 20px; text-decoration: none; color: var(--ink); }
   .brand span { color: var(--accent); }
   .theme-toggle {
@@ -45,7 +45,18 @@
   html[data-theme="light"] .theme-toggle .moon { display: none; }
   html[data-theme="dark"] .theme-toggle .sun { display: none; }
 
-  .container { max-width: 640px; margin: 0 auto; padding: 56px 24px 80px; }
+  .container { max-width: 1020px; margin: 0 auto; padding: 56px 24px 80px; }
+
+  /* Two-column: pitch left, form right (the main action) */
+  .split {
+    display: grid; grid-template-columns: minmax(0, 1fr) 380px;
+    gap: 56px; align-items: start;
+  }
+  .split .form-col { position: sticky; top: 24px; }
+  @media (max-width: 860px) {
+    .split { grid-template-columns: 1fr; gap: 36px; }
+    .split .form-col { position: static; order: -1; } /* form first on mobile */
+  }
 
   .kicker { font-size: 12px; letter-spacing: 0.16em; text-transform: uppercase; color: var(--accent); font-weight: 600; margin-bottom: 14px; }
   h1 { font-size: 40px; line-height: 1.15; margin-bottom: 18px; }
@@ -91,7 +102,7 @@
   .social-proof { text-align: center; margin-top: 22px; font-size: 13.5px; color: var(--faint); }
 
   /* ── FAQ ── */
-  .faq { margin-top: 52px; }
+  .faq { margin-top: 64px; max-width: 720px; }
   .faq > h2 { font-size: 24px; margin-bottom: 4px; }
   .faq .faq-sub { font-size: 14px; color: var(--faint); margin-bottom: 18px; }
   .faq details {
@@ -136,6 +147,9 @@
 
 <div class="container">
 
+  <div class="split">
+  <div class="pitch-col">
+
   <div class="kicker sans">Early access</div>
   <h1>Uganda's trusted news sources. <em>One story.</em></h1>
   <p class="sub">
@@ -168,6 +182,9 @@
     </div>
   </div>
 
+  </div><!-- /pitch-col -->
+
+  <div class="form-col">
   <div class="signup sans" id="signup">
     {% if joined %}
     <div class="success">
@@ -198,6 +215,9 @@
     {% if position %}<div class="social-proof">{{ position }} people already waiting</div>{% endif %}
     {% endif %}
   </div>
+  </div><!-- /form-col -->
+
+  </div><!-- /split -->
 
   <div class="faq sans">
     <h2>Frequently Asked Questions</h2>
