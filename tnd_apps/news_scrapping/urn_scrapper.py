@@ -48,6 +48,7 @@ class UrnScraper:
                 "language": "English",
             },
         )
+        self._driver = None
         self.session = requests.Session()
         self.session.headers.update({
             "User-Agent": (
@@ -57,6 +58,17 @@ class UrnScraper:
             "Accept": "application/json",
             "Referer": "https://ugandaradionetwork.net/a/archive.php",
         })
+
+    def _quit_driver(self) -> None:
+        if self._driver:
+            try:
+                self._driver.quit()
+            except Exception:
+                pass
+            self._driver = None
+
+    def __del__(self):
+        self._quit_driver()
 
     # ── Helpers ────────────────────────────────────────────────────────────
 
@@ -125,6 +137,45 @@ class UrnScraper:
                     tags.append(name)
         return tags[:10]
 
+    def _selenium_bypass(self, url: str, run: ScrapingRun) -> dict:
+        """
+        Cloudflare challenges datacenter IPs on this site. Load the URL in the
+        headless browser (which solves the JS challenge), parse the JSON from
+        the page body, and copy the clearance cookies into the requests session
+        so subsequent pages go over plain HTTP.
+        """
+        import json as _json
+
+        from .observer_scrapper import _build_driver
+
+        if self._driver is None:
+            self._driver = _build_driver(headless=True)
+
+        try:
+            self._driver.get(url)
+            # Give the Cloudflare challenge time to resolve and redirect
+            deadline = time.time() + 30
+            body_text = ""
+            while time.time() < deadline:
+                body_text = self._driver.find_element("tag name", "body").text.strip()
+                if body_text.startswith("{"):
+                    break
+                time.sleep(1.5)
+
+            if not body_text.startswith("{"):
+                self._log(run, "error", "Cloudflare challenge not passed within 30s", url)
+                return {}
+
+            # Reuse clearance cookies for future plain-requests calls
+            for cookie in self._driver.get_cookies():
+                self.session.cookies.set(
+                    cookie["name"], cookie["value"], domain=cookie.get("domain", "")
+                )
+            return _json.loads(body_text)
+        except Exception as exc:
+            self._log(run, "error", f"Selenium bypass failed: {exc}", url)
+            return {}
+
     def _fetch_page(self, page_index: int, run: ScrapingRun) -> dict:
         # Same filters the public archive page uses: statusId=4 = published
         params = {
@@ -139,8 +190,11 @@ class UrnScraper:
             resp.raise_for_status()
             return resp.json()
         except (requests.RequestException, ValueError) as exc:
-            self._log(run, "error", f"API fetch failed for page {page_index}: {exc}")
-            return {}
+            self._log(run, "warning", f"Direct API fetch failed for page {page_index} ({exc}) — trying browser bypass")
+
+        # Cloudflare 403 — go through the headless browser
+        from urllib.parse import urlencode
+        return self._selenium_bypass(f"{API_URL}?{urlencode(params)}", run)
 
     # ── Main entry point ───────────────────────────────────────────────────
 
@@ -279,3 +333,5 @@ class UrnScraper:
             self.source.save(update_fields=["failure_count"])
             self._log(run, "error", f"Scraping failed: {exc}")
             raise
+        finally:
+            self._quit_driver()
