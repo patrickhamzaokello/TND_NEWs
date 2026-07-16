@@ -313,6 +313,9 @@ TWITTER_API_SECRET         = config('TWITTER_API_SECRET', default='')
 TWITTER_ACCESS_TOKEN       = config('TWITTER_ACCESS_TOKEN', default='')
 TWITTER_ACCESS_TOKEN_SECRET = config('TWITTER_ACCESS_TOKEN_SECRET', default='')
 
+# FlareSolverr sidecar — solves Cloudflare challenges for scrapers (URN etc.)
+FLARESOLVERR_URL = config('FLARESOLVERR_URL', default='http://flaresolverr:8191/v1')
+
 NOTIFICATION_SERVICE_URL = config(
     'NOTIFICATION_SERVICE_URL',
     default='http://notification-service:4000/api/push-notification'

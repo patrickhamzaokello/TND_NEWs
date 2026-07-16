@@ -163,6 +163,25 @@ services:
     env_file:
       - .env
 
+  flaresolverr:
+    image: ghcr.io/flaresolverr/flaresolverr:latest
+    container_name: tnd_flaresolverr
+    restart: unless-stopped
+    networks:
+      - tnd_network
+    environment:
+      - LOG_LEVEL=info
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "10m"
+        max-file: "3"
+
   beat:
     image: tnd_backend_image
     container_name: tnd_beat_container

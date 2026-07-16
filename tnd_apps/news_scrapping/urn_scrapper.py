@@ -137,43 +137,53 @@ class UrnScraper:
                     tags.append(name)
         return tags[:10]
 
-    def _selenium_bypass(self, url: str, run: ScrapingRun) -> dict:
+    def _flaresolverr_fetch(self, url: str, run: ScrapingRun) -> dict:
         """
-        Cloudflare challenges datacenter IPs on this site. Load the URL in the
-        headless browser (which solves the JS challenge), parse the JSON from
-        the page body, and copy the clearance cookies into the requests session
-        so subsequent pages go over plain HTTP.
+        URN sits behind a Cloudflare *managed* challenge that blocks datacenter
+        IPs (plain requests AND vanilla headless Chromium both fail). Route the
+        request through the FlareSolverr sidecar, which solves the challenge
+        with a real browser and returns the response body.
+
+        Requires the `flaresolverr` service in docker-compose:
+            image: ghcr.io/flaresolverr/flaresolverr:latest
+        Endpoint configurable via settings.FLARESOLVERR_URL.
         """
         import json as _json
 
-        from .observer_scrapper import _build_driver
+        from django.conf import settings
 
-        if self._driver is None:
-            self._driver = _build_driver(headless=True)
+        endpoint = getattr(settings, 'FLARESOLVERR_URL', 'http://flaresolverr:8191/v1')
 
         try:
-            self._driver.get(url)
-            # Give the Cloudflare challenge time to resolve and redirect
-            deadline = time.time() + 30
-            body_text = ""
-            while time.time() < deadline:
-                body_text = self._driver.find_element("tag name", "body").text.strip()
-                if body_text.startswith("{"):
-                    break
-                time.sleep(1.5)
-
-            if not body_text.startswith("{"):
-                self._log(run, "error", "Cloudflare challenge not passed within 30s", url)
+            resp = requests.post(
+                endpoint,
+                json={"cmd": "request.get", "url": url, "maxTimeout": 60000},
+                timeout=75,
+            )
+            resp.raise_for_status()
+            payload = resp.json()
+            if payload.get("status") != "ok":
+                self._log(run, "error", f"FlareSolverr error: {payload.get('message', 'unknown')}", url)
                 return {}
 
-            # Reuse clearance cookies for future plain-requests calls
-            for cookie in self._driver.get_cookies():
-                self.session.cookies.set(
-                    cookie["name"], cookie["value"], domain=cookie.get("domain", "")
-                )
-            return _json.loads(body_text)
-        except Exception as exc:
-            self._log(run, "error", f"Selenium bypass failed: {exc}", url)
+            body = payload.get("solution", {}).get("response", "")
+            # The browser wraps raw JSON in an HTML/pre shell — extract it
+            start = body.find("{")
+            end = body.rfind("}")
+            if start == -1 or end == -1:
+                self._log(run, "error", "FlareSolverr response contained no JSON", url)
+                return {}
+            return _json.loads(body[start:end + 1])
+
+        except requests.RequestException as exc:
+            self._log(
+                run, "error",
+                f"FlareSolverr unreachable ({exc}) — is the flaresolverr container running?",
+                url,
+            )
+            return {}
+        except ValueError as exc:
+            self._log(run, "error", f"FlareSolverr JSON parse failed: {exc}", url)
             return {}
 
     def _fetch_page(self, page_index: int, run: ScrapingRun) -> dict:
@@ -190,11 +200,11 @@ class UrnScraper:
             resp.raise_for_status()
             return resp.json()
         except (requests.RequestException, ValueError) as exc:
-            self._log(run, "warning", f"Direct API fetch failed for page {page_index} ({exc}) — trying browser bypass")
+            self._log(run, "warning", f"Direct API fetch failed for page {page_index} ({exc}) — trying FlareSolverr")
 
-        # Cloudflare 403 — go through the headless browser
+        # Cloudflare managed challenge — go through the FlareSolverr sidecar
         from urllib.parse import urlencode
-        return self._selenium_bypass(f"{API_URL}?{urlencode(params)}", run)
+        return self._flaresolverr_fetch(f"{API_URL}?{urlencode(params)}", run)
 
     # ── Main entry point ───────────────────────────────────────────────────
 
