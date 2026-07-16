@@ -1,10 +1,14 @@
 """
-One-off backfill: strip broadcast cue markers (//Cue in: ... Cue out ...//)
-and residual &nbsp; entities from already-scraped Uganda Radio Network articles.
+One-off backfill: strip broadcast cue markers (//Cue in: ... Cue out ...//),
+stray HTML tags (<br>, <p>, ...), and residual entities from already-scraped
+Uganda Radio Network articles.
 
-New scrapes are already clean via UrnScraper._strip_cue_markers — this only
-fixes articles saved before that cleanup was added.
+New scrapes are already clean via UrnScraper._html_to_text — this only fixes
+articles saved before that cleanup was added.
 """
+
+import html as html_mod
+import re
 
 from django.core.management.base import BaseCommand
 from django.utils import timezone
@@ -12,9 +16,11 @@ from django.utils import timezone
 from tnd_apps.news_scrapping.models import Article
 from tnd_apps.news_scrapping.urn_scrapper import UrnScraper
 
+_STRAY_TAG_RE = re.compile(r"</?\s*(br|p|div|span)\s*/?>", re.IGNORECASE)
+
 
 class Command(BaseCommand):
-    help = "Strip radio cue markers from already-saved Uganda Radio Network article bodies."
+    help = "Strip radio cue markers and stray HTML tags from already-saved Uganda Radio Network article bodies."
 
     def add_arguments(self, parser):
         parser.add_argument("--dry-run", action="store_true")
@@ -32,10 +38,11 @@ class Command(BaseCommand):
             if not original:
                 continue
 
-            cleaned = original.replace("\xa0", " ").replace("&nbsp;", " ")
+            cleaned = html_mod.unescape(original)
+            cleaned = cleaned.replace("\xa0", " ").replace("&nbsp;", " ")
+            cleaned = _STRAY_TAG_RE.sub("\n", cleaned)
             cleaned = UrnScraper._strip_cue_markers(cleaned)
             # Re-run the same paragraph collapsing used at scrape time
-            import re
             paragraphs = [
                 re.sub(r"\s+", " ", p).strip()
                 for p in re.split(r"\n\s*\n", cleaned)

@@ -95,14 +95,25 @@ class UrnScraper:
         text = cls._CUE_LINE_RE.sub(" ", text)
         return text
 
+    # Fallback for tags that survive parsing because they were double-encoded
+    # in the source JSON (literal "&lt;br&gt;" text rather than real markup).
+    _STRAY_TAG_RE = re.compile(r"</?\s*(br|p|div|span)\s*/?>", re.IGNORECASE)
+
     @staticmethod
     def _html_to_text(html: str) -> str:
         """Convert URN's tContents HTML fragment to clean paragraph text."""
         if not html:
             return ""
-        soup = BeautifulSoup(html, "html.parser")
+        import html as _html_mod
+
+        # Unescape first — URN sometimes double-encodes entities, so a real
+        # <br> can arrive as the literal text "&lt;br&gt;" which BeautifulSoup
+        # would otherwise treat as plain text rather than a tag to strip.
+        unescaped = _html_mod.unescape(html)
+        soup = BeautifulSoup(unescaped, "html.parser")
         text = soup.get_text("\n", strip=True)
         text = text.replace("\xa0", " ").replace("&nbsp;", " ")
+        text = UrnScraper._STRAY_TAG_RE.sub("\n", text)
         text = UrnScraper._strip_cue_markers(text)
 
         # Collapse mid-sentence linebreaks (URN wraps hard); keep blank-line paragraphs
