@@ -177,6 +177,13 @@ class ObserverUgScraper:
         lower = text.lower()
         return any(p in lower for p in self.BOILERPLATE_PATTERNS)
 
+    def _listing_page_url(self, listing_url: str, page_num: int) -> str:
+        """Build the URL for listing page N. WordPress-style by default;
+        subclasses override for query-string pagination."""
+        if page_num == 1:
+            return listing_url.rstrip("/") + "/"
+        return listing_url.rstrip("/") + f"/page/{page_num}/"
+
     def _category_from_url(self, url: str) -> str:
         parts = [p for p in urlparse(url).path.strip("/").split("/") if p]
         if parts:
@@ -666,10 +673,7 @@ class ObserverUgScraper:
             total_processed = 0
 
             for page_num in range(start_page, start_page + max_pages):
-                if page_num == 1:
-                    page_url = listing_url.rstrip("/") + "/"
-                else:
-                    page_url = listing_url.rstrip("/") + f"/page/{page_num}/"
+                page_url = self._listing_page_url(listing_url, page_num)
 
                 self._log(run, "info", f"Scraping listing page {page_num}: {page_url}")
                 cards = self._scrape_listing_page(page_url, run)

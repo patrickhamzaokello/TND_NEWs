@@ -554,6 +554,76 @@ def scrape_pulse_section(
         raise exc
 
 
+@shared_task(
+    bind=True,
+    max_retries=3,
+    default_retry_delay=300,
+    name="tnd_apps.news_scrapping.tasks.scrape_urn",
+    acks_late=True,
+    reject_on_worker_lost=True,
+)
+def scrape_urn(
+    self,
+    get_full_content: bool = True,
+    max_articles: int | None = None,
+    max_pages: int = 2,
+    start_page: int = 1,
+    source_name: str = "Uganda Radio Network",
+):
+    """
+    Scrape the Uganda Radio Network archive and persist articles.
+
+    URN's archive is one reverse-chronological feed (no sections), paginated
+    via archive.php?page=N. Full bodies are paywalled; public lead paragraphs
+    are captured and are sufficient for enrichment and story matching.
+    """
+    from .urn_scrapper import UrnScraper
+
+    task_id = self.request.id
+    logger.info(
+        "Starting URN scrape | full_content=%s | max_articles=%s | max_pages=%s | task_id=%s",
+        get_full_content, max_articles, max_pages, task_id,
+    )
+
+    try:
+        scraper = UrnScraper(source_name=source_name, headless=True)
+        result = scraper.scrape_and_save(
+            get_full_content=get_full_content,
+            max_articles=max_articles,
+            start_page=start_page,
+            max_pages=max_pages,
+        )
+
+        run = (
+            ScrapingRun.objects.filter(source=scraper.source)
+            .order_by("-started_at")
+            .first()
+        )
+        if run and task_id and not run.task_id:
+            run.task_id = task_id
+            run.save(update_fields=["task_id"])
+
+        logger.info(
+            "URN scrape complete | added=%s | updated=%s | skipped=%s | errors=%s | duration=%ss",
+            result.get("articles_added", 0),
+            result.get("articles_updated", 0),
+            result.get("articles_skipped", 0),
+            result.get("errors", 0),
+            result.get("duration", "?"),
+        )
+        return result
+
+    except Exception as exc:
+        logger.error(
+            "URN scrape FAILED | task_id=%s | error=%s\n%s",
+            task_id, exc, traceback.format_exc(),
+        )
+        _mark_run_failed(task_id, str(exc))
+        if self.request.retries < self.max_retries:
+            raise self.retry(countdown=self.default_retry_delay, exc=exc)
+        raise exc
+
+
 KAWOWO_SECTIONS: dict[str, str] = {
     "home":       "https://kawowo.com",
     "football":   "https://kawowo.com/category/football",
