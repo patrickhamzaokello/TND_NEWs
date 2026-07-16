@@ -46,7 +46,10 @@ ADJUDICATION_COSINE_MIN = 0.62     # borderline band: ask the LLM to decide
 ADJUDICATION_MAX_CANDIDATES = 2    # at most this many LLM adjudication calls per article
 
 # ── Synthesis triggers ────────────────────────────────────────────────────────
-SYNTHESIS_MIN_ARTICLES = 1         # every story gets a rewritten title/summary/facts
+# Single-article stories get their card fields directly from the article's
+# enrichment (no extra LLM call); full synthesis starts at 2+ sources where
+# there is actually something to synthesize.
+SYNTHESIS_MIN_ARTICLES = 2
 SYNTHESIS_GROWTH_TRIGGER = 2       # re-synthesize after this many new articles
 SYNTHESIS_IMPORTANCE_TRIGGER = 7   # ... or immediately if a new article scores ≥ this
 
@@ -411,13 +414,47 @@ def assign_article_to_story(enrichment) -> tuple:
 
     if cluster is None:
         # ── Create a new story ────────────────────────────────────────────────
+        # Card fields come straight from the article's enrichment — no LLM call.
+        # Full synthesis replaces them once a second source joins.
         arc_name = (enrichment.related_themes or [None])[0]
         title_seed = arc_name or article.title[:120]
         slug = _unique_slug(slugify(title_seed)[:100])
+
+        card_title = (enrichment.neutral_title or article.title)[:300]
+        summary = enrichment.summary or ''
+        highlights = [
+            {'text': fact, 'sources_count': 1}
+            for fact in (enrichment.key_facts or [])[:6]
+            if isinstance(fact, str) and fact.strip()
+        ]
+        why = enrichment.why_it_matters or ''
+        if not why and isinstance(enrichment.local_impact, dict):
+            why = enrichment.local_impact.get('impact_note', '')
+
+        # Entities: only surface forms that appear verbatim in the card text
+        # (clients substring-match to render clickable tags)
+        rendered = ' '.join([card_title, summary, why] + [h['text'] for h in highlights])
+        entities = []
+        seen_names = set()
+        for name_list, etype in [
+            (enrichment.entities_people, 'person'),
+            (enrichment.entities_organizations, 'organization'),
+            (enrichment.entities_locations, 'location'),
+        ]:
+            for name in (name_list or []):
+                name = (name or '').strip()
+                if name and name not in seen_names and name in rendered:
+                    seen_names.add(name)
+                    entities.append({'name': name, 'type': etype})
+
         cluster = StoryCluster.objects.create(
-            title=article.title[:300],
+            title=card_title,
             slug=slug,
-            summary=enrichment.summary or '',
+            summary=summary,
+            short_summary=summary,
+            why_this_matters=why,
+            key_highlights=highlights,
+            entities=entities,
             primary_theme=(enrichment.themes or ['general'])[0],
             importance_score=enrichment.importance_score or 0,
             first_seen_at=event_date,

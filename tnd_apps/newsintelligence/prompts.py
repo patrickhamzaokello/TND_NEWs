@@ -73,6 +73,10 @@ Return this exact JSON structure:
 {{
   "summary": "<2-3 sentences. Start with what happened and who is directly involved (use full names and titles). Second sentence: the specific claim, action, or event — with numbers, places, and context from the article. Third sentence (if needed): the immediate significance OR what is unresolved. Do not editorialize. Do not invent context not in the article.>",
 
+  "neutral_title": "<A REWRITTEN neutral headline in your own words — never copy the publisher's headline. Who is involved + what happened + the main action. Concise but complete, with the distinguishing details (full names, institution, case) that make the event unambiguous. No opinions, no clickbait.>",
+
+  "why_it_matters": "<ONE dense sentence of concrete stakes from the reporting: what the actors seek, risk, or stand to change — stacked as specifics. Model: 'The ruling leaves Kivumbi's bail unenforced, his location undisclosed, and his lawyers seeking a court order compelling police to produce him.' NEVER 'this impacts', 'raises fears', 'public trust', or any reader-addressing.>",
+
   "sentiment": "positive|negative|neutral|mixed",
   "sentiment_score": <float -1.0 to 1.0>,
   "importance_score": <int 1-10 — most articles score 3-6; use 7+ only for real national consequences>,

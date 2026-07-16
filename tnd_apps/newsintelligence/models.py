@@ -41,6 +41,14 @@ class ArticleEnrichment(models.Model):
     # ── Core AI outputs ───────────────────────────────────────────────────────
 
     summary = models.TextField(blank=True, help_text="2-3 sentence neutral summary")
+    neutral_title = models.CharField(
+        max_length=300, blank=True,
+        help_text="Rewritten neutral headline — used as the story card title for single-article stories",
+    )
+    why_it_matters = models.TextField(
+        blank=True,
+        help_text="One dense sentence of concrete stakes — used on story cards",
+    )
 
     sentiment = models.CharField(
         max_length=10, choices=SENTIMENT_CHOICES, blank=True

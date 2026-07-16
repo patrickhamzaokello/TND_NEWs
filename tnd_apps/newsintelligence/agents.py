@@ -145,6 +145,8 @@ class ArticleAnalysisAgent:
 
         enrichment.status           = 'completed'
         enrichment.summary          = data.get('summary', '')
+        enrichment.neutral_title    = (data.get('neutral_title') or '')[:300]
+        enrichment.why_it_matters   = data.get('why_it_matters', '')
         enrichment.sentiment        = data.get('sentiment', 'neutral')
         enrichment.sentiment_score  = data.get('sentiment_score')
         enrichment.importance_score = data.get('importance_score')
