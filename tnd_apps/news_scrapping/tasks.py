@@ -740,6 +740,23 @@ def send_breaking_news_immediately(article_id=None, breaking_news_id=None):
     else:
         call_command('send_breaking_news')
 
+@shared_task(
+    bind=True,
+    max_retries=2,
+    default_retry_delay=600,
+    name="tnd_apps.news_scrapping.tasks.backup_to_drive",
+)
+def backup_to_drive(self, skip_media: bool = False, keep: int = 14):
+    """Scheduled wrapper around `python manage.py backup_to_drive`."""
+    from tnd_apps.news_scrapping.backup_service import run_backup
+
+    try:
+        return run_backup(include_media=not skip_media, keep=keep, keep_local=False)
+    except Exception as exc:
+        logger.error("backup_to_drive failed: %s", exc)
+        raise self.retry(exc=exc)
+
+
 @shared_task
 def process_new_article_for_breaking_news(article_id):
     """Check if new article should be breaking news"""

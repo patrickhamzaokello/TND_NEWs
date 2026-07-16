@@ -35,6 +35,11 @@ celery_app.conf.beat_schedule = {
         'task': 'tnd_apps.news_scrapping.tasks.cleanup_old_notifications',
         'schedule': crontab(hour=2, minute=0),  # Daily at 2 AM
     },
+    'backup-to-drive-daily': {
+        'task': 'tnd_apps.news_scrapping.tasks.backup_to_drive',
+        'schedule': crontab(hour=2, minute=30),  # 02:30 UTC — quiet hours
+        'kwargs': {'skip_media': False, 'keep': 14},
+    },
     'update-source-favicons': {
         'task': 'tnd_apps.news_scrapping.tasks.update_source_favicons',
         'schedule': crontab(hour=1, minute=30),  # Daily at 1:30 AM UTC

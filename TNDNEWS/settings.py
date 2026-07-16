@@ -316,6 +316,11 @@ TWITTER_ACCESS_TOKEN_SECRET = config('TWITTER_ACCESS_TOKEN_SECRET', default='')
 # FlareSolverr sidecar — solves Cloudflare challenges for scrapers (URN etc.)
 FLARESOLVERR_URL = config('FLARESOLVERR_URL', default='http://flaresolverr:8191/v1')
 
+# Google Drive backups — see tnd_apps/news_scrapping/backup_service.py for setup
+GDRIVE_CLIENT_SECRETS_FILE = config('GDRIVE_CLIENT_SECRETS_FILE', default='')
+GDRIVE_TOKEN_FILE = config('GDRIVE_TOKEN_FILE', default='')
+GDRIVE_BACKUP_FOLDER_ID = config('GDRIVE_BACKUP_FOLDER_ID', default='')
+
 NOTIFICATION_SERVICE_URL = config(
     'NOTIFICATION_SERVICE_URL',
     default='http://notification-service:4000/api/push-notification'

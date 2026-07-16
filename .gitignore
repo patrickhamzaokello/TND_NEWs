@@ -8,6 +8,8 @@ aeacbio_project/smart_deploy.sh
 # C extensions
 *.so
 
+gdrive_client_secret.json
+
 # Distribution / packaging
 .Python
 build/
