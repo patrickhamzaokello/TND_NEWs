@@ -80,6 +80,21 @@ class UrnScraper:
     def _log(self, run: ScrapingRun, level: str, message: str, url: str = "") -> None:
         ScrapingLog.objects.create(run=run, level=level, message=message, article_url=url)
 
+    # Radio-script audio cue markers URN embeds in the body, e.g.:
+    #   //Cue in : 'they are suffering ………..
+    #   Cue out :…………nobody can care'’.//
+    # These reference the accompanying audio clip and read as garbage in text.
+    _CUE_BLOCK_RE = re.compile(r"//.*?//", re.DOTALL)
+    _CUE_LINE_RE = re.compile(
+        r"^\s*cue\s*(in|out)\s*[:\-].*$", re.IGNORECASE | re.MULTILINE
+    )
+
+    @classmethod
+    def _strip_cue_markers(cls, text: str) -> str:
+        text = cls._CUE_BLOCK_RE.sub(" ", text)
+        text = cls._CUE_LINE_RE.sub(" ", text)
+        return text
+
     @staticmethod
     def _html_to_text(html: str) -> str:
         """Convert URN's tContents HTML fragment to clean paragraph text."""
@@ -87,7 +102,9 @@ class UrnScraper:
             return ""
         soup = BeautifulSoup(html, "html.parser")
         text = soup.get_text("\n", strip=True)
-        text = text.replace("\xa0", " ")
+        text = text.replace("\xa0", " ").replace("&nbsp;", " ")
+        text = UrnScraper._strip_cue_markers(text)
+
         # Collapse mid-sentence linebreaks (URN wraps hard); keep blank-line paragraphs
         paragraphs = [
             re.sub(r"\s+", " ", p).strip()
@@ -97,7 +114,8 @@ class UrnScraper:
         if len(paragraphs) <= 1:
             joined = re.sub(r"\s*\n\s*", " ", text)
             paragraphs = [re.sub(r"\s+", " ", joined).strip()]
-        return "\n\n".join(p for p in paragraphs if p)
+
+        return "\n\n".join(p for p in paragraphs if p and len(p) > 2)
 
     def _parse_date(self, value: str | None):
         if not value:
