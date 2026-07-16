@@ -573,9 +573,9 @@ def scrape_urn(
     """
     Scrape the Uganda Radio Network archive and persist articles.
 
-    URN's archive is one reverse-chronological feed (no sections), paginated
-    via archive.php?page=N. Full bodies are paywalled; public lead paragraphs
-    are captured and are sufficient for enrichment and story matching.
+    Uses URN's JSON API (/a/json/archive.php?page=N) which returns full
+    article bodies, summaries, categories, authors, keywords, and images —
+    no HTML parsing or Selenium needed.
     """
     from .urn_scrapper import UrnScraper
 
