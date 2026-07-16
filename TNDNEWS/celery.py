@@ -143,10 +143,12 @@ celery_app.conf.beat_schedule = {
         'schedule': crontab(minute=25, hour='*/3'),  # :25
         'kwargs': {'section': 'business', 'get_full_content': True, 'max_articles': 20, 'max_pages': 2},
     },
+    # URN's JSON API only serves the latest 14 stories (no pagination works),
+    # so run every 2 hours to catch everything as it publishes.
     'scrape-urn-archive': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_urn',
-        'schedule': crontab(minute=30, hour='1-23/3'),  # offset hours — 01:30, 04:30 …
-        'kwargs': {'get_full_content': True, 'max_articles': 25, 'max_pages': 2},
+        'schedule': crontab(minute=30, hour='*/2'),  # 00:30, 02:30, 04:30 …
+        'kwargs': {'get_full_content': True, 'max_articles': 14, 'max_pages': 1},
     },
     'scrape-pulse-news': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_pulse_section',

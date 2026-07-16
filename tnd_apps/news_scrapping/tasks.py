@@ -566,7 +566,7 @@ def scrape_urn(
     self,
     get_full_content: bool = True,
     max_articles: int | None = None,
-    max_pages: int = 2,
+    max_pages: int = 1,  # API always returns the same latest-14 regardless of page
     start_page: int = 1,
     source_name: str = "Uganda Radio Network",
 ):

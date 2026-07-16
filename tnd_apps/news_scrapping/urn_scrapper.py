@@ -12,6 +12,11 @@ author, keywords, image, and publish time — richer than the public web page,
 which paywalls the body.
 
 Story page URL (for Article.url): https://ugandaradionetwork.net{permalink}
+
+PAGINATION CAVEAT: the JSON endpoint ignores ALL parameters (page, sBefore,
+storyId, ...) and always returns the latest 14 stories. Deeper pages are not
+reachable with full content (the HTML story pages paywall the body). The beat
+schedule therefore runs every 2 hours so nothing slips between runs.
 """
 
 import re
