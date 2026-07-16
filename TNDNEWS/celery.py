@@ -130,7 +130,7 @@ celery_app.conf.beat_schedule = {
     },
     'scrape-nilepost-security': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_nilepost_section',
-        'schedule': crontab(minute=45, hour='*/3'),  # :45
+        'schedule': crontab(minute=45, hour='1-23/3'),  # offset hours — 01:45, 04:45 …
         'kwargs': {'section': 'security', 'get_full_content': True, 'max_pages': 2},
     },
     'scrape-observer-news': {
@@ -147,7 +147,7 @@ celery_app.conf.beat_schedule = {
     # so run every 2 hours to catch everything as it publishes.
     'scrape-urn-archive': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_urn',
-        'schedule': crontab(minute=30, hour='*/2'),  # 00:30, 02:30, 04:30 …
+        'schedule': crontab(minute=58, hour='*/2'),  # 00:58, 02:58 … (free slot everywhere)
         'kwargs': {'get_full_content': True, 'max_articles': 14, 'max_pages': 1},
     },
     'scrape-pulse-news': {
@@ -157,7 +157,7 @@ celery_app.conf.beat_schedule = {
     },
     'scrape-pulse-business': {
         'task': 'tnd_apps.news_scrapping.tasks.scrape_pulse_section',
-        'schedule': crontab(minute=45, hour='*/3'),  # :45
+        'schedule': crontab(minute=25, hour='1-23/3'),  # offset hours — 01:25, 04:25 …
         'kwargs': {'section': 'business', 'get_full_content': True, 'max_articles': 15},
     },
     'scrape-pulse-entertainment': {
