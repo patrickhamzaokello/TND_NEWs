@@ -50,8 +50,12 @@ ADJUDICATION_MAX_CANDIDATES = 2    # at most this many LLM adjudication calls pe
 # enrichment (no extra LLM call); full synthesis starts at 2+ sources where
 # there is actually something to synthesize.
 SYNTHESIS_MIN_ARTICLES = 2
-SYNTHESIS_GROWTH_TRIGGER = 2       # re-synthesize after this many new articles
-SYNTHESIS_IMPORTANCE_TRIGGER = 7   # ... or immediately if a new article scores ≥ this
+# Re-synthesize on every new article once a story has 2+ sources. Long-running
+# stories (e.g. a multi-week sports campaign) must never show a stale title/
+# summary from an earlier chapter while last_seen_at ticks forward from an
+# unrelated later article — staleness is worse than the extra cheap LLM call.
+SYNTHESIS_GROWTH_TRIGGER = 1
+SYNTHESIS_IMPORTANCE_TRIGGER = 7   # kept as a fallback trigger path, still cheap to check
 
 
 # ══════════════════════════════════════════════════════════════════════════════
@@ -385,6 +389,16 @@ def assign_article_to_story(enrichment) -> tuple:
     )
 
     article = enrichment.article
+    if not article.published_at:
+        # scraped_at is when WE saw it, not when the event happened — using it
+        # as event_date makes reprints/retrospectives of old events look like
+        # breaking news. Log so bad-date scrapers are visible and fixable.
+        logger.warning(
+            'Article %d has no published_at — falling back to scraped_at for '
+            'story timeline. This can misdate old/reprinted content as fresh. '
+            'source=%s url=%s',
+            article.pk, article.source.name if article.source else '?', article.url,
+        )
     event_date = article.published_at or article.scraped_at or timezone.now()
 
     # Already assigned? Skip.
