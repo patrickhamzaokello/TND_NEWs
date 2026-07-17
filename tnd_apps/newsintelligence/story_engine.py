@@ -612,12 +612,19 @@ def synthesize_story(cluster, force: bool = False) -> bool:
         )
     related_stories = '\n'.join(related_lines) or '(none)'
 
+    latest = members[-1]
+    latest_summary = (
+        f"[{latest.article.source.name if latest.article.source else 'unknown'}] "
+        f"{latest.article.title} — {latest.summary}"
+    )
+
     user_prompt = STORY_SYNTHESIS_USER.format(
         article_count=len(members),
         articles_json=json.dumps(articles_payload, ensure_ascii=False, indent=1)[:24000],
         current_title=cluster.title,
         current_summary=cluster.short_summary or '(none yet)',
         related_stories=related_stories,
+        latest_article_summary=latest_summary,
     )
 
     response = call_openai(

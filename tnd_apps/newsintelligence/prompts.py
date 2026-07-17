@@ -295,8 +295,12 @@ RULES:
   - Prioritize facts confirmed by MULTIPLE sources. If only one outlet reports something,
     attribute it ("According to [source], ...").
   - If sources conflict, note the discrepancy briefly rather than picking a side.
-  - Update naturally as the story develops — the title and summary should reflect the LATEST
-    known state, not the first report.
+  - The title and short_summary MUST describe the MOST RECENT article's event/development —
+    not whichever fact is best-supported historically. A story that has been running for weeks
+    (e.g. a team's tournament campaign) still needs its headline to say what is happening NOW,
+    not recap an older match that already concluded. Use the "MOST RECENT DEVELOPMENT" article
+    given below as the anchor for title and short_summary. Older articles inform long_summary,
+    overview, and the timeline — they do not override the headline.
   - Never invent facts not present in the input articles.
   - TONE: dense, factual, specific — like a premium news product. Every sentence carries
     information: names, actions, figures, dates. No commentary, no moralizing, no addressing
@@ -315,14 +319,17 @@ Current summary: {current_summary}
 Related earlier stories on this platform (for overview context — do NOT merge their facts into this story's summary):
 {related_stories}
 
+MOST RECENT DEVELOPMENT (this is what just happened — title and short_summary must anchor to this):
+{latest_article_summary}
+
 Articles (ordered oldest → newest):
 {articles_json}
 
 Return this exact JSON structure:
 {{
-  "title": "<Neutral headline representing the ENTIRE story — who is involved + what happened + the main action. ALWAYS rewritten in your own words, never copied from any source headline. Concise but complete — include the distinguishing details (full names, institution, case) that make this story unambiguous. No opinions, no speculation. E.g. 'Muwanga Kivumbi Rearrested Hours After Bail Release in Terrorism Case'>",
+  "title": "<Neutral headline describing the MOST RECENT DEVELOPMENT given above — who is involved + what just happened + the main action. Not a recap of an earlier chapter in this story. ALWAYS rewritten in your own words, never copied from any source headline. Concise but complete — include the distinguishing details (full names, institution, case) that make this unambiguous. No opinions, no speculation. E.g. 'Muwanga Kivumbi Rearrested Hours After Bail Release in Terrorism Case'>",
 
-  "short_summary": "<WHAT HAPPENED: 2-3 sentences answering only 'what happened' — who, what, current state. Built from consensus facts across sources, duplicates removed. This is the card text users see before opening the story.>",
+  "short_summary": "<WHAT JUST HAPPENED, per the MOST RECENT DEVELOPMENT: 2-3 sentences — who, what, current state. May reference prior chapters briefly for context but must lead with the latest event, not an older one. This is the card text users see before opening the story.>",
 
   "long_summary": "<2-4 paragraphs: the full story so far, combining all reporting chronologically. What happened first, what developed, where things stand now, and what remains unresolved. Include specific names, figures, and places. Attribute single-source claims.>",
 
