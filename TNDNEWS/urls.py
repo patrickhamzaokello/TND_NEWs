@@ -10,7 +10,7 @@ from django.db import connection
 from TNDNEWS import settings
 from tnd_apps.newsintelligence.views import (
     digest_home, digest_subscribe, stories_page, stories_search_json, story_page,
-    waitlist_page,
+    story_eli5, waitlist_page,
 )
 
 schema_view = get_schema_view(
@@ -60,6 +60,7 @@ urlpatterns = [
     path('stories/', stories_page, name='stories'),
     path('stories/search.json', stories_search_json, name='stories-search-json'),
     path('story/<slug:slug>/', story_page, name='story-detail'),
+    path('story/<slug:slug>/eli5.json', story_eli5, name='story-eli5'),
 
     # Swagger endpoints (moved off the root)
     path('docs/', schema_view.with_ui('swagger', cache_timeout=0), name='schema-swagger-ui'),

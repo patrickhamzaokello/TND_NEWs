@@ -394,6 +394,28 @@ Key facts: {story_highlights}
 Is the new article part of this story?"""
 
 
+# ── Story ELI5 Prompt ──────────────────────────────────────────────────────
+# Used by: story_engine.generate_eli5 — on-demand, cached per story version.
+
+ELI5_SYSTEM = """You explain news stories the way you'd explain them to a curious 5-year-old —
+using simple words, short sentences, and everyday comparisons. Never talk down to the reader or
+call them a child. Just use plain, simple language a child could follow, while keeping every fact
+accurate. No jargon, no big words without explaining them, no politics-speak.
+
+Return ONLY valid JSON. No markdown, no preamble."""
+
+ELI5_USER = """Explain this news story like I'm 5 years old.
+
+Title: {title}
+Summary: {summary}
+Overview: {overview}
+
+Return this exact JSON structure:
+{{
+  "explanation": "<3-5 short sentences, simple words, maybe one everyday comparison (like a playground or a toy) if it helps. Must stay factually accurate to the story above — do not invent anything.>"
+}}"""
+
+
 # ── Helper: article count guidance string for digest prompt ──────────────────
 
 def get_article_count_guidance(article_count: int) -> str:

@@ -437,6 +437,13 @@ class StoryCluster(models.Model):
         default=list, blank=True,
         help_text='Entities appearing verbatim in synthesized text: [{"name", "type"}] — clients substring-match to render clickable tags',
     )
+    eli5_explanation = models.TextField(
+        blank=True, help_text='On-demand "explain like I\'m 5" version, generated once and cached'
+    )
+    eli5_generated_at = models.DateTimeField(null=True, blank=True)
+    eli5_source_version = models.IntegerField(
+        default=0, help_text='cluster.version at the time the ELI5 was generated — used to detect staleness'
+    )
     version = models.IntegerField(default=0, help_text='Incremented on each synthesis')
     synthesized_at = models.DateTimeField(null=True, blank=True)
     articles_at_synthesis = models.IntegerField(

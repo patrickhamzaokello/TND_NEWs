@@ -1240,3 +1240,24 @@ def waitlist_page(request):
         'error': error,
         'position': position,
     })
+
+
+def story_eli5(request, slug):
+    """On-demand ELI5 explanation — generated once per story version, then cached and served to everyone."""
+    from django.http import JsonResponse, Http404
+    from .models import StoryCluster
+    from .story_engine import get_or_generate_eli5
+
+    if request.method != 'POST':
+        return JsonResponse({'error': 'POST required'}, status=405)
+
+    story = StoryCluster.objects.filter(slug=slug).first()
+    if not story:
+        raise Http404('Story not found')
+
+    try:
+        explanation, cached = get_or_generate_eli5(story)
+    except Exception as exc:
+        return JsonResponse({'error': str(exc)}, status=500)
+
+    return JsonResponse({'explanation': explanation, 'cached': cached})

@@ -780,3 +780,37 @@ def process_new_articles(batch_size: int = 100) -> dict:
     }
     logger.info('Story engine pass complete | %s', result)
     return result
+
+
+# ══════════════════════════════════════════════════════════════════════════════
+# On-demand "Explain Like I'm 5"
+# ══════════════════════════════════════════════════════════════════════════════
+
+def get_or_generate_eli5(cluster) -> tuple[str, bool]:
+    """
+    Return (explanation, was_cached). Generates once per story version and
+    caches on the cluster; repeat requests (from any user) get the same text
+    until the story is re-synthesized (new articles change the underlying facts).
+    """
+    from .openai_client import call_openai, parse_json_response
+    from .prompts import ELI5_SYSTEM, ELI5_USER
+
+    if cluster.eli5_explanation and cluster.eli5_source_version >= cluster.version:
+        return cluster.eli5_explanation, True
+
+    user_prompt = ELI5_USER.format(
+        title=cluster.title,
+        summary=cluster.short_summary or cluster.summary or '',
+        overview=cluster.overview or '',
+    )
+    response = call_openai(system=ELI5_SYSTEM, user=user_prompt, model='gpt-4o-mini', max_tokens=300)
+    data = parse_json_response(response.content)
+    explanation = (data.get('explanation') or '').strip()
+
+    cluster.eli5_explanation = explanation
+    cluster.eli5_generated_at = timezone.now()
+    cluster.eli5_source_version = cluster.version
+    cluster.save(update_fields=['eli5_explanation', 'eli5_generated_at', 'eli5_source_version'])
+
+    logger.info('ELI5 generated | story=%d version=%d', cluster.pk, cluster.version)
+    return explanation, False
