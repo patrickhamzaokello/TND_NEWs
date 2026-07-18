@@ -140,6 +140,29 @@
     .source-item .s-thumb { flex-basis: 76px; width: 76px; height: 56px; }
   }
 
+  /* ── Related stories: card grid ── */
+  .related-grid {
+    display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 14px;
+  }
+  .related-card {
+    display: block; text-decoration: none; color: inherit;
+    padding: 14px 16px; border: 1px solid var(--line); border-radius: 10px;
+    background: var(--card); transition: border-color 0.15s, transform 0.15s;
+  }
+  .related-card:hover { border-color: var(--accent); transform: translateY(-1px); }
+  .rc-badge {
+    display: inline-block; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 8px; border-radius: 999px; margin-bottom: 8px;
+  }
+  .rc-earlier { background: rgba(200,64,26,0.12); color: var(--accent); }
+  .rc-later { background: rgba(38,113,74,0.12); color: #26714a; }
+  html[data-theme="dark"] .rc-later { background: rgba(127,199,143,0.15); color: #7fc78f; }
+  .related-card .rc-title {
+    font-size: 15px; font-weight: 600; line-height: 1.35; margin-bottom: 6px;
+    display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; overflow: hidden;
+  }
+  .related-card .rc-meta { font-size: 12px; color: var(--faint); text-transform: capitalize; }
 
   /* ── Entity tags ── */
   a.entity {
@@ -292,25 +315,6 @@
   </section>
   {% endif %}
 
-  {% if related %}
-  <section>
-    <h2 class="sans">Related stories</h2>
-    {% for rel in related %}
-      {% if rel.to_cluster_id != story.id %}
-      <a class="related-item" href="/story/{{ rel.to_cluster.slug }}/">
-        <div class="r-dir sans">Earlier — {{ rel.get_relation_type_display }}</div>
-        <div class="r-title">{{ rel.to_cluster.title }}</div>
-      </a>
-      {% else %}
-      <a class="related-item" href="/story/{{ rel.from_cluster.slug }}/">
-        <div class="r-dir sans">Later development</div>
-        <div class="r-title">{{ rel.from_cluster.title }}</div>
-      </a>
-      {% endif %}
-    {% endfor %}
-  </section>
-  {% endif %}
-
   {% if articles %}
   <section>
     <h2 class="sans">Coverage ({{ articles|length }})</h2>
@@ -331,6 +335,29 @@
       </div>
     </a>
     {% endfor %}
+  </section>
+  {% endif %}
+
+  {% if related %}
+  <section>
+    <h2 class="sans">Related stories</h2>
+    <div class="related-grid">
+      {% for rel in related %}
+        {% if rel.to_cluster_id != story.id %}
+        <a class="related-card" href="/story/{{ rel.to_cluster.slug }}/">
+          <span class="rc-badge rc-earlier">Earlier</span>
+          <div class="rc-title">{{ rel.to_cluster.title }}</div>
+          <div class="rc-meta sans">{{ rel.to_cluster.primary_theme }} · {{ rel.get_relation_type_display }}</div>
+        </a>
+        {% else %}
+        <a class="related-card" href="/story/{{ rel.from_cluster.slug }}/">
+          <span class="rc-badge rc-later">Later</span>
+          <div class="rc-title">{{ rel.from_cluster.title }}</div>
+          <div class="rc-meta sans">{{ rel.from_cluster.primary_theme }} · {{ rel.get_relation_type_display }}</div>
+        </a>
+        {% endif %}
+      {% endfor %}
+    </div>
   </section>
   {% endif %}
 
