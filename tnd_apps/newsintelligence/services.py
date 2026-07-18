@@ -135,6 +135,7 @@ class EnrichmentService:
             run.save()
 
             return {
+                'digest_id':      digest.pk,
                 'digest_date':    str(digest.digest_date),
                 'articles':       digest.articles_analyzed,
                 'top_story_count': len(digest.top_stories),
