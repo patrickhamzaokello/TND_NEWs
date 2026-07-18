@@ -302,6 +302,16 @@ RULES:
     given below as the anchor for title and short_summary. Older articles inform long_summary,
     overview, and the timeline — they do not override the headline.
   - Never invent facts not present in the input articles.
+  - TEMPORAL DISCIPLINE — this is a common failure mode, watch for it carefully:
+    Match the TENSE of the source articles exactly. If an article says a match/event/decision
+    is scheduled, upcoming, expected, or "set to" happen, your output must preserve that it has
+    NOT happened yet — never convert "will play the final on Sunday" into "played the final" or
+    "faced off in the final." Check every article's publish date against TODAY'S DATE given
+    below: an article published before an event's stated date is a PREVIEW, not a report of the
+    outcome. If every input article is a preview/anticipation piece, the synthesized story must
+    stay in future/scheduled tense throughout — title, summaries, overview, highlights. Do not
+    resolve an outcome, a score, or a "first meeting" as having occurred unless an article
+    explicitly reports it as completed.
   - TONE: dense, factual, specific — like a premium news product. Every sentence carries
     information: names, actions, figures, dates. No commentary, no moralizing, no addressing
     the reader, no abstract significance-talk ('raises questions', 'highlights tensions in
@@ -312,6 +322,10 @@ Return ONLY valid JSON. No markdown, no preamble."""
 
 
 STORY_SYNTHESIS_USER = """Synthesize the following {article_count} articles covering the same story.
+
+TODAY'S DATE: {today} — use this to judge whether each article's publish date is before or
+after any event it describes. An article published before a scheduled event's date is reporting
+on an UPCOMING event, not its outcome.
 
 Current story title: {current_title}
 Current summary: {current_summary}

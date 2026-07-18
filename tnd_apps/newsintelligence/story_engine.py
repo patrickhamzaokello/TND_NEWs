@@ -639,6 +639,7 @@ def synthesize_story(cluster, force: bool = False) -> bool:
     )
 
     user_prompt = STORY_SYNTHESIS_USER.format(
+        today=timezone.now().date().isoformat(),
         article_count=len(members),
         articles_json=json.dumps(articles_payload, ensure_ascii=False, indent=1)[:24000],
         current_title=cluster.title,
