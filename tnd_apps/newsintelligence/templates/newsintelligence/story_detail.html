@@ -83,6 +83,8 @@
     width: 8px; height: 8px; border-radius: 2px; background: var(--accent);
   }
   ul.highlights .src-count { font-size: 12px; color: var(--faint); }
+  ul.highlights .src-link { color: var(--accent); text-decoration: none; }
+  ul.highlights .src-link:hover { text-decoration: underline; }
 
   .why {
     padding: 18px 22px; border-left: 3px solid var(--accent);
@@ -261,7 +263,14 @@
     <ul class="highlights">
       {% for h in story.key_highlights %}
       <li>{{ h.text|tag_entities:story.entities }}
-        {% if h.sources_count and h.sources_count > 1 %}<span class="src-count sans"> — {{ h.sources_count }} sources</span>{% endif %}
+        {% if h.citations %}
+        <span class="src-count sans">
+          — confirmed by
+          {% for c in h.citations %}<a class="src-link" href="{{ c.url }}" target="_blank" rel="noopener">{{ c.source }}</a>{% if not forloop.last %}, {% endif %}{% endfor %}
+        </span>
+        {% elif h.sources_count and h.sources_count > 1 %}
+        <span class="src-count sans"> — {{ h.sources_count }} sources</span>
+        {% endif %}
       </li>
       {% endfor %}
     </ul>

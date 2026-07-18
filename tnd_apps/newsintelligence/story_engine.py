@@ -456,8 +456,13 @@ def assign_article_to_story(enrichment) -> tuple:
 
         card_title = (enrichment.neutral_title or article.title)[:300]
         summary = enrichment.summary or ''
+        single_citation = [{
+            'article_id': article.id,
+            'source': article.source.name if article.source else 'Unknown source',
+            'url': article.url,
+        }]
         highlights = [
-            {'text': fact, 'sources_count': 1}
+            {'text': fact, 'sources_count': 1, 'citations': single_citation}
             for fact in (enrichment.key_facts or [])[:6]
             if isinstance(fact, str) and fact.strip()
         ]
@@ -613,8 +618,10 @@ def synthesize_story(cluster, force: bool = False) -> bool:
         return False
 
     articles_payload = []
+    articles_by_id = {}
     for m in members:
         articles_payload.append({
+            'article_id': m.article.id,
             'source': m.article.source.name if m.article.source else 'unknown',
             'published': str(m.article.published_at or m.article.scraped_at or ''),
             'title': m.article.title,
@@ -622,6 +629,7 @@ def synthesize_story(cluster, force: bool = False) -> bool:
             'key_facts': m.key_facts,
             'importance': m.importance_score,
         })
+        articles_by_id[m.article.id] = m.article
 
     # Story graph context: earlier related stories feed the overview
     related_lines = []
@@ -661,7 +669,29 @@ def synthesize_story(cluster, force: bool = False) -> bool:
     long_summary = data.get('long_summary', '')
     overview = data.get('overview', '')
     why_it_matters = data.get('why_it_matters', '')
-    key_highlights = data.get('key_highlights', [])
+
+    # Resolve each highlight's supporting article_ids to real citations
+    # (url + source name) — never trust the LLM to produce a URL itself.
+    # Invalid/hallucinated article_ids are silently dropped.
+    key_highlights = []
+    for h in (data.get('key_highlights') or []):
+        if not isinstance(h, dict) or not h.get('text'):
+            continue
+        raw_ids = h.get('article_ids') or []
+        citations = []
+        for aid in raw_ids:
+            article = articles_by_id.get(aid)
+            if article:
+                citations.append({
+                    'article_id': article.id,
+                    'source': article.source.name if article.source else 'Unknown source',
+                    'url': article.url,
+                })
+        key_highlights.append({
+            'text': h['text'],
+            'sources_count': len(citations) or 1,
+            'citations': citations,
+        })
 
     # Validate entities: keep only well-formed entries that actually appear
     # verbatim somewhere in the synthesized text (clients substring-match).

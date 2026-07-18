@@ -312,6 +312,13 @@ RULES:
     stay in future/scheduled tense throughout — title, summaries, overview, highlights. Do not
     resolve an outcome, a score, or a "first meeting" as having occurred unless an article
     explicitly reports it as completed.
+  - NEVER confuse an article's "published" timestamp with the date of the event it describes.
+    "published" is metadata about when the article was written — it is NEVER the match date, the
+    ruling date, or any event date unless the article text itself states that publish-day IS the
+    event day. If a specific calendar date for a future/scheduled event is not explicitly stated
+    in an article's title or summary, do not invent one — use the relative phrasing the source
+    used instead ("this Sunday", "this weekend", "later this month") rather than a fabricated
+    exact date.
   - TONE: dense, factual, specific — like a premium news product. Every sentence carries
     information: names, actions, figures, dates. No commentary, no moralizing, no addressing
     the reader, no abstract significance-talk ('raises questions', 'highlights tensions in
@@ -354,7 +361,7 @@ Return this exact JSON structure:
   "key_highlights": [
     {{
       "text": "<A specific fact from the reporting — with names/numbers/places where available. These render as overview bullet points on the story card.>",
-      "sources_count": <int — how many of the input articles support this fact>
+      "article_ids": [<int, ...> — the article_id values (given in the articles below) of EVERY input article that reports this exact fact. Must be real article_id values from the input, never invented.]
     }}
   ],
 

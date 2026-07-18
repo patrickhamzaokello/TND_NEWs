@@ -148,11 +148,16 @@ class Command(BaseCommand):
         # If 2+ articles ended up here, the next story-engine pass will properly
         # synthesize it since version=0 triggers first synthesis.
         if first_enrichment:
+            single_citation = [{
+                'article_id': first_article.id,
+                'source': first_article.source.name if first_article.source else 'Unknown source',
+                'url': first_article.url,
+            }]
             new_cluster.summary = first_enrichment.summary or ''
             new_cluster.short_summary = first_enrichment.summary or ''
             new_cluster.why_this_matters = first_enrichment.why_it_matters or ''
             new_cluster.key_highlights = [
-                {'text': f, 'sources_count': 1}
+                {'text': f, 'sources_count': 1, 'citations': single_citation}
                 for f in (first_enrichment.key_facts or [])[:6] if f
             ]
         new_cluster.importance_score = importance
