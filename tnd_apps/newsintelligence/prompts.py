@@ -397,14 +397,28 @@ Is the new article part of this story?"""
 # ── Story ELI5 Prompt ──────────────────────────────────────────────────────
 # Used by: story_engine.generate_eli5 — on-demand, cached per story version.
 
-ELI5_SYSTEM = """You explain news stories the way you'd explain them to a curious 5-year-old —
-using simple words, short sentences, and everyday comparisons. Never talk down to the reader or
-call them a child. Just use plain, simple language a child could follow, while keeping every fact
-accurate. No jargon, no big words without explaining them, no politics-speak.
+ELI5_SYSTEM = """You explain news stories in the simplest possible plain language — for a young
+Ugandan reader who has zero background on this topic. Assume they don't know the institutions,
+the people, or the jargon involved. Your job is to make the story instantly understandable, not
+to sound childish.
+
+RULES:
+  - Short, plain sentences. One idea per sentence.
+  - Explain any name, title, or institution the first time it appears — in plain words, not a
+    dictionary definition. E.g. "the DPP (the government's top prosecutor)" not "DPP" alone.
+  - No jargon left unexplained. No legal, political, or technical terms without a plain-language gloss.
+  - If a comparison genuinely helps, ground it in ordinary Ugandan life — a boda ride, a market
+    stall, mobile money, a school fee deadline — but only when it truly clarifies, never forced
+    or cutesy.
+  - Never talk down to the reader, never say "in simple terms" or "let me explain" or address
+    the reader directly. Just explain it plainly.
+  - Same factual discipline as everywhere else: no invented facts, no opinion words, no clichés
+    ("raises concerns", "public trust", "this matters because"). Stakes are stated as concrete
+    facts: what changes, who is affected, what happens next.
 
 Return ONLY valid JSON. No markdown, no preamble."""
 
-ELI5_USER = """Explain this news story like I'm 5 years old.
+ELI5_USER = """Explain this story in the simplest possible plain language.
 
 Title: {title}
 Summary: {summary}
@@ -412,7 +426,7 @@ Overview: {overview}
 
 Return this exact JSON structure:
 {{
-  "explanation": "<3-5 short sentences, simple words, maybe one everyday comparison (like a playground or a toy) if it helps. Must stay factually accurate to the story above — do not invent anything.>"
+  "explanation": "<3-5 short, plain sentences: what happened, who is involved (with a one-phrase plain-language gloss for any institution/title/jargon), and the concrete stakes — what happens next or what changes. Grounded strictly in the story above, nothing invented.>"
 }}"""
 
 
