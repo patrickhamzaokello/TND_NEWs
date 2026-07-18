@@ -212,12 +212,32 @@ def find_matching_story(enrichment):
         centroid_embedding__isnull=False,
     )
 
+    # The article's OWN publish date, not the scrape time. A backfilled or
+    # late-scraped article about an old event must not silently attach to an
+    # unrelated but topically-similar ACTIVE story just because that story
+    # happens to be currently active — the two events may be weeks apart.
+    article = enrichment.article
+    article_date = article.published_at
+
     best_cluster = None
     best_score = 0.0
 
     for cluster in candidates:
         cos = cosine_similarity(vector, cluster.centroid_embedding)
         if cos < COSINE_FLOOR:
+            continue
+
+        # Temporal proximity gate: this article's real event date must fall
+        # within the active-story window relative to the story's own timeline
+        # (not just "cluster is active right now"). Skip clusters the article
+        # couldn't plausibly belong to on a timeline basis. If the article has
+        # no confirmed publish date, treat it as unproven — only strong direct
+        # matches proceed, everything else defers to stage-2 adjudication.
+        if article_date is not None:
+            days_apart = abs((article_date - cluster.last_seen_at).days)
+            if days_apart > EVENT_WINDOW_DAYS:
+                continue
+        elif cos < COSINE_STRONG_MATCH:
             continue
 
         # Strong semantic match — same event, no further validation needed
