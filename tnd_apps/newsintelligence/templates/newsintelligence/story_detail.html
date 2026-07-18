@@ -140,10 +140,40 @@
     .source-item .s-thumb { flex-basis: 76px; width: 76px; height: 56px; }
   }
 
-  .related-item { display: block; text-decoration: none; color: inherit; padding: 12px 0; border-bottom: 1px solid var(--line); }
-  .related-item:hover .r-title { color: var(--accent); }
-  .related-item .r-dir { font-size: 11.5px; color: var(--faint); text-transform: uppercase; letter-spacing: 0.08em; }
-  .related-item .r-title { font-size: 15.5px; font-weight: 600; transition: color 0.15s; }
+  /* ── Story graph: earlier → current → later, flow-chart style ── */
+  .story-graph {
+    display: grid; grid-template-columns: 1fr auto 1fr; align-items: center;
+    gap: 18px; overflow-x: auto; padding: 8px 4px 20px;
+  }
+  .graph-col { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+  .graph-col.earlier { align-items: flex-end; }
+  .graph-col.later { align-items: flex-start; }
+  .graph-arrow {
+    display: flex; align-items: center; justify-content: center;
+    color: var(--faint); font-size: 20px; padding: 0 4px;
+  }
+  .graph-node {
+    display: block; text-decoration: none; max-width: 220px;
+    padding: 10px 14px; border-radius: 8px; border: 1px solid var(--line);
+    background: var(--card); font-size: 13.5px; line-height: 1.35;
+    color: var(--muted); transition: border-color 0.15s, color 0.15s;
+  }
+  .graph-node:hover { border-color: var(--accent); color: var(--ink); }
+  .graph-node .g-tag {
+    display: block; font-size: 10.5px; letter-spacing: 0.07em; text-transform: uppercase;
+    color: var(--faint); margin-bottom: 4px;
+  }
+  .graph-node.current {
+    background: var(--accent); color: #fff; border-color: var(--accent);
+    font-weight: 600; font-size: 14.5px; max-width: 260px; cursor: default;
+  }
+  .graph-node.current .g-tag { color: rgba(255,255,255,0.75); }
+  .graph-empty-col { min-width: 12px; }
+  @media (max-width: 720px) {
+    .story-graph { grid-template-columns: 1fr; }
+    .graph-col.earlier, .graph-col.later { align-items: stretch; }
+    .graph-arrow { transform: rotate(90deg); padding: 6px 0; }
+  }
 
   /* ── Entity tags ── */
   a.entity {
@@ -296,22 +326,43 @@
   </section>
   {% endif %}
 
-  {% if related %}
+  {% if earlier_relations or later_relations %}
   <section>
-    <h2 class="sans">Related stories</h2>
-    {% for rel in related %}
-      {% if rel.to_cluster_id != story.id %}
-      <a class="related-item" href="/story/{{ rel.to_cluster.slug }}/">
-        <div class="r-dir sans">Earlier — {{ rel.get_relation_type_display }}</div>
-        <div class="r-title">{{ rel.to_cluster.title }}</div>
-      </a>
-      {% else %}
-      <a class="related-item" href="/story/{{ rel.from_cluster.slug }}/">
-        <div class="r-dir sans">Later development</div>
-        <div class="r-title">{{ rel.from_cluster.title }}</div>
-      </a>
-      {% endif %}
-    {% endfor %}
+    <h2 class="sans">Story graph</h2>
+    <div class="story-graph sans">
+
+      <div class="graph-col earlier">
+        {% for rel in earlier_relations %}
+        <a class="graph-node" href="/story/{{ rel.to_cluster.slug }}/">
+          <span class="g-tag">Earlier · {{ rel.get_relation_type_display }}</span>
+          {{ rel.to_cluster.title }}
+        </a>
+        {% empty %}
+        <div class="graph-empty-col"></div>
+        {% endfor %}
+      </div>
+
+      {% if earlier_relations %}<div class="graph-arrow">→</div>{% endif %}
+
+      <div class="graph-node current">
+        <span class="g-tag">This story</span>
+        {{ story.title }}
+      </div>
+
+      {% if later_relations %}<div class="graph-arrow">→</div>{% endif %}
+
+      <div class="graph-col later">
+        {% for rel in later_relations %}
+        <a class="graph-node" href="/story/{{ rel.from_cluster.slug }}/">
+          <span class="g-tag">Later · {{ rel.get_relation_type_display }}</span>
+          {{ rel.from_cluster.title }}
+        </a>
+        {% empty %}
+        <div class="graph-empty-col"></div>
+        {% endfor %}
+      </div>
+
+    </div>
   </section>
   {% endif %}
 

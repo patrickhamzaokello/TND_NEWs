@@ -1150,8 +1150,12 @@ def story_page(request, slug):
         .order_by('-article__published_at')
     )
 
-    related = list(story.outgoing_relations.select_related('to_cluster')) + \
-              list(story.incoming_relations.select_related('from_cluster'))
+    # Story graph: earlier developments this story continues (outgoing →
+    # to_cluster is the older parent) and later developments that continue
+    # this one (incoming ← from_cluster is the newer child).
+    earlier_relations = list(story.outgoing_relations.select_related('to_cluster'))
+    later_relations = list(story.incoming_relations.select_related('from_cluster'))
+    related = earlier_relations + later_relations
 
     # Share-preview image: most relevant member article with a featured image
     card_link = (
@@ -1167,6 +1171,8 @@ def story_page(request, slug):
         'story': story,
         'articles': articles,
         'related': related,
+        'earlier_relations': earlier_relations,
+        'later_relations': later_relations,
         'timeline': story.timeline_events.order_by('-event_date'),
         'card_image': card_image,
     })
