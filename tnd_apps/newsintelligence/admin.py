@@ -421,8 +421,9 @@ class StoryClusterAdmin(admin.ModelAdmin):
     )
     list_filter = ('status', 'primary_theme', 'version')
     search_fields = ('title', 'summary', 'short_summary', 'why_this_matters')
-    prepopulated_fields = {'slug': ('title',)}
-    readonly_fields = ('version', 'synthesized_at', 'articles_at_synthesis')
+    # slug is a permanent short ID assigned once at creation — never derived
+    # from title, so it must NOT auto-regenerate when the title changes.
+    readonly_fields = ('slug', 'version', 'synthesized_at', 'articles_at_synthesis')
     exclude = ('centroid_embedding',)
     inlines = [StoryVersionInline, StoryClusterArticleInline, StoryTimelineEventInline]
     actions = ['action_synthesize']

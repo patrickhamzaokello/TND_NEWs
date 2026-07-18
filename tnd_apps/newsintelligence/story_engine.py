@@ -385,15 +385,22 @@ def _update_centroid(cluster):
         cluster.save(update_fields=['centroid_embedding'])
 
 
-def _unique_slug(base: str) -> str:
+def _unique_slug(base: str = '') -> str:
+    """
+    Short, random, permanent story ID (e.g. 'x7k2m9qp') — never derived from
+    the title. Titles get rewritten on every re-synthesis; a slug tied to the
+    title would break every link ever shared for that story. `base` is
+    accepted for backward-compat call sites but ignored.
+    """
+    import secrets
+
     from .models import StoryCluster
-    slug = base or 'story'
-    counter = 1
-    candidate = slug
-    while StoryCluster.objects.filter(slug=candidate).exists():
-        candidate = f'{slug}-{counter}'
-        counter += 1
-    return candidate
+
+    alphabet = 'abcdefghijkmnpqrstuvwxyz23456789'  # no 0/O/1/l/i ambiguity
+    while True:
+        candidate = ''.join(secrets.choice(alphabet) for _ in range(8))
+        if not StoryCluster.objects.filter(slug=candidate).exists():
+            return candidate
 
 
 @transaction.atomic
@@ -450,9 +457,7 @@ def assign_article_to_story(enrichment) -> tuple:
         # ── Create a new story ────────────────────────────────────────────────
         # Card fields come straight from the article's enrichment — no LLM call.
         # Full synthesis replaces them once a second source joins.
-        arc_name = (enrichment.related_themes or [None])[0]
-        title_seed = arc_name or article.title[:120]
-        slug = _unique_slug(slugify(title_seed)[:100])
+        slug = _unique_slug()
 
         card_title = (enrichment.neutral_title or article.title)[:300]
         summary = enrichment.summary or ''
