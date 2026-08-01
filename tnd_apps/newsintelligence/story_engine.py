@@ -45,6 +45,18 @@ REVIVAL_MIN_ENTITY = 0.10          # minimum entity overlap for direct revival
 ADJUDICATION_COSINE_MIN = 0.62     # borderline band: ask the LLM to decide
 ADJUDICATION_MAX_CANDIDATES = 2    # at most this many LLM adjudication calls per article
 
+# ── Excluded themes ────────────────────────────────────────────────────────────
+# Sports coverage overwhelmingly produces single-source, one-off match/event
+# articles that never accumulate a second source — each one still costs an
+# embedding call, and (worse) up to 2 LLM adjudication calls per article when
+# stage-1 matching fails and it falls through to revival search. That's real
+# spend for content nobody considers a "story." Excluded entirely from the
+# story pipeline: never embedded, never clustered, never synthesized. Article
+# enrichment (summary/facts for the article reading experience) is untouched —
+# only the story-clustering path is skipped.
+EXCLUDED_STORY_THEMES = ['sports']
+
+
 # ── Synthesis triggers ────────────────────────────────────────────────────────
 # Single-article stories get their card fields directly from the article's
 # enrichment (no extra LLM call); full synthesis starts at 2+ sources where
@@ -111,14 +123,19 @@ def generate_article_embedding(enrichment, save: bool = True) -> list[float]:
 
 
 def embed_pending_articles(batch_size: int = 100) -> int:
-    """Embed all completed enrichments that don't have an embedding yet."""
+    """
+    Embed all completed enrichments that don't have an embedding yet.
+    Excludes EXCLUDED_STORY_THEMES (sports) — those articles never enter the
+    story pipeline at all, saving the embedding call and every downstream
+    clustering/adjudication cost for content that's rarely worth a story.
+    """
     from .models import ArticleEnrichment
 
-    pending = list(
-        ArticleEnrichment.objects.filter(
-            status='completed', embedding__isnull=True,
-        ).select_related('article')[:batch_size]
-    )
+    query = ArticleEnrichment.objects.filter(status='completed', embedding__isnull=True)
+    for theme in EXCLUDED_STORY_THEMES:
+        query = query.exclude(themes__contains=[theme])
+
+    pending = list(query.select_related('article')[:batch_size])
     if not pending:
         return 0
 
@@ -788,13 +805,21 @@ def process_new_articles(batch_size: int = 100) -> dict:
 
     embedded = embed_pending_articles(batch_size)
 
-    # Articles with embeddings but no story assignment
+    # Articles with embeddings but no story assignment. Excludes
+    # EXCLUDED_STORY_THEMES defensively — sports articles are never embedded
+    # in the first place (see embed_pending_articles), but this second check
+    # guards against any that already had an embedding from before this
+    # exclusion existed.
+    unassigned_query = ArticleEnrichment.objects.filter(
+        status='completed', embedding__isnull=False,
+    ).exclude(
+        article__story_cluster_links__isnull=False,
+    )
+    for theme in EXCLUDED_STORY_THEMES:
+        unassigned_query = unassigned_query.exclude(themes__contains=[theme])
+
     unassigned = list(
-        ArticleEnrichment.objects.filter(
-            status='completed', embedding__isnull=False,
-        ).exclude(
-            article__story_cluster_links__isnull=False,
-        ).select_related('article', 'article__source')
+        unassigned_query.select_related('article', 'article__source')
         .order_by('article__published_at')[:batch_size]
     )
 

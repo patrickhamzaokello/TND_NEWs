@@ -666,6 +666,31 @@ class StoryClusterDetailView(generics.RetrieveAPIView):
         return Response(cached_response(cache_key, TTL.CLUSTER_DETAIL, _build))
 
 
+class StoryClusterEli5View(APIView):
+    """
+    On-demand "Explain like I'm 5" for a story cluster. Generated once per
+    story version and cached on the cluster (see story_engine.get_or_generate_eli5)
+    — every caller after the first gets the same cached text until the story
+    is re-synthesized. Mirrors the web app's /story/<slug>/eli5.json endpoint,
+    exposed here under /intelligence/ for the mobile client (JWT/AllowAny —
+    no CSRF friction, unlike the session-based web view).
+    """
+    permission_classes = [AllowAny]
+
+    def post(self, request, slug):
+        cluster = StoryCluster.objects.filter(slug=slug).first()
+        if not cluster:
+            return Response({'error': 'Story not found'}, status=status.HTTP_404_NOT_FOUND)
+
+        from .story_engine import get_or_generate_eli5
+        try:
+            explanation, cached = get_or_generate_eli5(cluster)
+        except Exception as exc:
+            return Response({'error': str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'explanation': explanation, 'cached': cached})
+
+
 class TrendingEntitiesView(generics.GenericAPIView):
     permission_classes = [AllowAny]
 
