@@ -278,18 +278,23 @@ class StoryTimelineEventSerializer(serializers.ModelSerializer):
 class StoryClusterListSerializer(serializers.ModelSerializer):
     """
     Story Card: title + summary + overview + image + category + timestamps
-    + source count.
+    + sources. This is the primary shape clients render in a stories feed —
+    every field here should be enough to display one card with no follow-up
+    request; only "open the story" needs the detail endpoint.
     """
     article_count = serializers.IntegerField(read_only=True)
     source_count = serializers.IntegerField(read_only=True)
     card_image_url = serializers.SerializerMethodField()
+    sources = serializers.SerializerMethodField()
+    theme_display = serializers.SerializerMethodField()
 
     class Meta:
         model = StoryCluster
         fields = [
-            'id', 'title', 'slug', 'summary', 'why_this_matters',
-            'local_impact', 'primary_theme', 'status', 'importance_score',
+            'id', 'title', 'slug', 'why_this_matters',
+            'primary_theme', 'theme_display', 'status', 'importance_score',
             'first_seen_at', 'last_seen_at', 'article_count', 'source_count',
+            'sources',
             # Story Card content (semantic story engine)
             'short_summary', 'overview', 'key_highlights', 'entities',
             'card_image_url', 'version', 'synthesized_at',
@@ -306,17 +311,54 @@ class StoryClusterListSerializer(serializers.ModelSerializer):
         )
         return link.article.featured_image_url if link else None
 
+    def get_theme_display(self, obj):
+        return (obj.primary_theme or '').replace('_', ' ').title()
+
+    def get_sources(self, obj):
+        """
+        Which outlets are covering this story — lets a feed card show source
+        chips/logos without a second request to the detail endpoint.
+
+        Iterates the already-prefetched cluster_articles in Python (the view
+        prefetches 'cluster_articles__article__source') — chaining .filter()/
+        .order_by() on a prefetched manager would bypass the cache and re-hit
+        the DB per story, defeating the prefetch.
+        """
+        links = sorted(
+            (l for l in obj.cluster_articles.all()
+             if l.article.has_full_content and l.article.source_id),
+            key=lambda l: l.relevance_score, reverse=True,
+        )
+        seen = set()
+        result = []
+        for link in links:
+            source = link.article.source
+            if source.id in seen:
+                continue
+            seen.add(source.id)
+            result.append({
+                'id': source.id,
+                'name': source.name,
+                'favicon_url': getattr(source, 'favicon_url', '') or '',
+            })
+        return result
+
 
 class StoryClusterDetailSerializer(StoryClusterListSerializer):
+    """
+    Note: per-source framing (sentiment, notable emphasis, omitted context) is
+    merged directly into each entry of `articles` rather than exposed as a
+    separate `perspectives` list — the two used to duplicate the same set of
+    articles under different shapes, forcing clients to reconcile them.
+    """
     articles = serializers.SerializerMethodField()
     timeline = serializers.SerializerMethodField()
-    perspectives = SourcePerspectiveSerializer(source='source_perspectives', many=True, read_only=True)
     versions = serializers.SerializerMethodField()
     related_stories = serializers.SerializerMethodField()
 
     class Meta(StoryClusterListSerializer.Meta):
         fields = StoryClusterListSerializer.Meta.fields + [
-            'long_summary', 'articles', 'timeline', 'perspectives', 'versions',
+            'long_summary', 'articles', 'timeline', 'versions',
             'related_stories',
         ]
 
@@ -368,6 +410,12 @@ class StoryClusterDetailSerializer(StoryClusterListSerializer):
             .filter(article__has_full_content=True)
             .order_by('-relevance_score', '-article__enrichment__importance_score', '-article__published_at')
         )
+        # Per-source framing, keyed by article id — merged into each article
+        # entry below rather than exposed as a separate parallel list.
+        perspectives_by_article = {
+            p.article_id: p for p in obj.source_perspectives.all()
+        }
+
         result = []
         for link in links:
             article = link.article
@@ -379,6 +427,13 @@ class StoryClusterDetailSerializer(StoryClusterListSerializer):
                 data['story_arcs'] = enrichment.related_themes or []
                 data['key_facts'] = enrichment.key_facts[:2] if enrichment.key_facts else []
             data['relevance_score'] = link.relevance_score
+
+            perspective = perspectives_by_article.get(article.id)
+            if perspective:
+                data['sentiment_score'] = perspective.sentiment_score
+                data['notable_emphasis'] = perspective.notable_emphasis
+                data['omitted_context'] = perspective.omitted_context
+
             result.append(data)
         return result
 

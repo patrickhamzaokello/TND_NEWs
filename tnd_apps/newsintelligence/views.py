@@ -601,6 +601,8 @@ class StoryClusterListView(generics.ListAPIView):
                 filter=Q(cluster_articles__article__has_full_content=True),
                 distinct=True,
             ),
+        ).prefetch_related(
+            'cluster_articles__article__source',
         ).order_by('-last_seen_at', '-importance_score')
 
         status = self.request.query_params.get('status')
