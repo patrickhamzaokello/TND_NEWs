@@ -118,8 +118,11 @@ class CacheKey:
         return f'v1:entities:top:{entity_limit}:{articles_per}:{window_days}'
 
     @staticmethod
-    def cluster_list_page(page: int, page_size: int, status: str, theme: str) -> str:
-        return f'v1:clusters:list:p={page}:ps={page_size}:s={status or ""}:t={theme or ""}'
+    def cluster_list_page(page: int, page_size: int, status: str, theme: str, search: str = '') -> str:
+        return (
+            f'v1:clusters:list:p={page}:ps={page_size}:s={status or ""}:t={theme or ""}'
+            f':q={search or ""}'
+        )
 
 
 # ── Core helpers ───────────────────────────────────────────────────────────────

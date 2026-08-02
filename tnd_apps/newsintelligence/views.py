@@ -607,10 +607,18 @@ class StoryClusterListView(generics.ListAPIView):
 
         status = self.request.query_params.get('status')
         theme = self.request.query_params.get('theme')
+        search = (self.request.query_params.get('search') or '').strip()
         if status:
             qs = qs.filter(status=status)
         if theme:
             qs = qs.filter(primary_theme=theme)
+        if search:
+            qs = qs.filter(
+                Q(title__icontains=search)
+                | Q(short_summary__icontains=search)
+                | Q(overview__icontains=search)
+                | Q(entities__icontains=search)
+            )
         return qs
 
     def list(self, request, *args, **kwargs):
@@ -618,7 +626,9 @@ class StoryClusterListView(generics.ListAPIView):
         page_size = int(request.query_params.get('page_size', self.pagination_class.page_size))
         status_param = request.query_params.get('status', '')
         theme_param = request.query_params.get('theme', '')
-        cache_key = CacheKey.cluster_list_page(page, page_size, status_param, theme_param)
+        search_param = (request.query_params.get('search') or '').strip()
+        cache_key = CacheKey.cluster_list_page(page, page_size, status_param, theme_param, search_param)
+        ttl = TTL.CLUSTER_LIST if not search_param else 60
 
         def _build():
             qs = self.filter_queryset(self.get_queryset())
@@ -626,7 +636,7 @@ class StoryClusterListView(generics.ListAPIView):
             serializer = self.get_serializer(page_obj, many=True)
             return self.get_paginated_response(serializer.data).data
 
-        return Response(cached_response(cache_key, TTL.CLUSTER_LIST, _build))
+        return Response(cached_response(cache_key, ttl, _build))
 
 
 class StoryClusterDetailView(generics.RetrieveAPIView):
